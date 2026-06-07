@@ -1,24 +1,20 @@
 """
-TidByt-style LED screen — control server (LIVE DATA VERSION).
+TidByt-style LED screen — control server (LIVE DATA + OTA VERSION).
 
-Same endpoints as the dummy, so your device firmware needs NO changes.
-The only difference: trains/weather now come from Rail Data Marketplace and
-OpenWeather instead of the fake functions.
+Serves:
+  - live trains + weather to the device
+  - remote config (brightness / message / reboot) per device
+  - FIRMWARE: the device bootloader pulls app code from here
+        GET /firmware/version  -> {"version": "..."}
+        GET /firmware/app       -> raw text of device_app.py
 
-Key points:
-- API keys are read from ENVIRONMENT VARIABLES, never hardcoded. This matters
-  because Render reads your code from GitHub; a key committed to a public repo
-  is a leaked key.
-- Data is CACHED server-side (trains ~60s, weather ~30min) and shared across all
-  devices, so 1 device or 100 devices makes the same number of upstream calls.
-- "Minutes until departure" is computed in Europe/London time on the server, so
-  it's correct no matter what timezone the cloud host runs in.
-
-Run locally:
-    pip install -r requirements.txt
-    set OWM_API_KEY=...      (Windows)   /   export OWM_API_KEY=...   (Mac/Linux)
-    set RDM_API_KEY=...
-    uvicorn server:app --host 0.0.0.0 --port 8000
+To ship a new app version:
+  1. edit device_app.py in this repo
+  2. bump FIRMWARE_VERSION below
+  3. commit -> Render redeploys
+  4. reboot the device (power cycle, OR set its reboot flag remotely:
+        POST /api/device/<id>/config   body: {"reboot": true}
+     the device picks up the new version on its next boot)
 """
 
 import os
@@ -29,23 +25,29 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# --- Secrets (set these as environment variables; do NOT paste keys here) ---
+# Bump this every time you change device_app.py.
+FIRMWARE_VERSION = "1"
+
+# --- Secrets (set as environment variables in Render; never hardcode) ---
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
 
-# --- Location / board config (this becomes per-device settings later) -------
+# --- Location / board config (becomes per-device settings later) ---
 OWM_LAT = "51.5074"
 OWM_LON = "-0.1278"
 
 RDM_URL_BASE = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 UK_TZ = ZoneInfo("Europe/London")
 
-# Each board = one row on the screen. Same logic you had in the firmware,
-# just expressed as data so it's easy to add/edit stations later.
+# These headers are required — without a browser-like User-Agent the
+# Rail Data Marketplace gateway returns a bare 403 before reaching the data.
+RDM_HEADERS = {"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
 BOARDS = [
     {"badge": "TLK", "badge_col": [150, 0, 0],  "station": "TUH",
      "match": ["St Albans", "Luton", "Bedford", "Farringdon", "Elephant & Castle"]},
@@ -56,10 +58,10 @@ BOARDS = [
 ]
 
 # =====================================================================
-# --- Device config store (unchanged from dummy) ---
+# --- Device config store ---
 # =====================================================================
 DEVICE_CONFIG = {}
-DEFAULT_CONFIG = {"brightness": 0.6, "mode": "TRAINS", "message": "HELLO FROM THE SERVER"}
+DEFAULT_CONFIG = {"brightness": 0.6, "message": "HELLO FROM THE SERVER", "reboot": False}
 
 
 def get_config(device_id: str):
@@ -71,20 +73,18 @@ def get_config(device_id: str):
 # =====================================================================
 # --- TRAINS (Rail Data Marketplace) ---
 # =====================================================================
-_station_cache = {}          # station_code -> {"ts": float, "services": [...]}
-STATION_TTL = 60             # seconds
+_station_cache = {}
+STATION_TTL = 60
 
 
 def _fetch_station(station: str):
-    """Fetch one station's board, cached. On failure, keep last good data."""
     now = time.time()
     cached = _station_cache.get(station)
     if cached and (now - cached["ts"] < STATION_TTL):
         return cached["services"]
     services = cached["services"] if cached else []
     try:
-        r = requests.get(RDM_URL_BASE + station,
-                         headers={"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        r = requests.get(RDM_URL_BASE + station, headers=RDM_HEADERS, timeout=10)
         if r.status_code == 200:
             services = r.json().get("trainServices") or []
         else:
@@ -102,7 +102,7 @@ def _minutes_until(hhmm: str) -> int:
     current = now.hour * 60 + now.minute
     h, m = map(int, hhmm.split(":"))
     diff = (h * 60 + m) - current
-    if diff < -1000:          # crossed midnight
+    if diff < -1000:
         diff += 24 * 60
     return diff
 
@@ -110,17 +110,17 @@ def _minutes_until(hhmm: str) -> int:
 def _parse_service(t):
     std = t.get("std")
     etd = t.get("etd")
-    color = [0, 255, 0]               # green = on time
+    color = [0, 255, 0]
     if etd == "Cancelled":
         return {"text": "CNCL", "color": [255, 50, 50]}
     check_time = std
-    if etd and ":" in etd:            # a revised time
+    if etd and ":" in etd:
         check_time = etd
-        color = [255, 140, 0]         # orange = delayed-but-expected
+        color = [255, 140, 0]
     elif etd == "Delayed":
         color = [255, 140, 0]
     mins = _minutes_until(check_time)
-    if mins < -1:                     # already gone
+    if mins < -1:
         return None
     return {"text": "NOW" if mins <= 0 else f"{mins}M", "color": color}
 
@@ -150,10 +150,10 @@ def get_trains():
 
 
 # =====================================================================
-# --- WEATHER (OpenWeather 5-day / 3-hour forecast) ---
+# --- WEATHER (OpenWeather) ---
 # =====================================================================
 _weather_cache = {"ts": 0, "data": []}
-WEATHER_TTL = 1800           # 30 minutes
+WEATHER_TTL = 1800
 
 
 def get_weather():
@@ -167,7 +167,6 @@ def get_weather():
         url = (f"https://api.openweathermap.org/data/2.5/forecast"
                f"?lat={OWM_LAT}&lon={OWM_LON}&appid={OWM_API_KEY}&units=metric")
         data = requests.get(url, timeout=10).json()
-
         days, order = {}, []
         for item in data["list"]:
             date_str, time_str = item["dt_txt"].split(" ")
@@ -177,7 +176,7 @@ def get_weather():
                 order.append(date_str)
             d = days[date_str]
             d["temps"].append(item["main"]["temp"])
-            if 6 <= hour <= 21:          # daytime slots only set the icon
+            if 6 <= hour <= 21:
                 cond = item["weather"][0]["main"].lower()
                 if "rain" in cond or "drizzle" in cond:
                     d["icons"].append("rain")
@@ -185,7 +184,6 @@ def get_weather():
                     d["icons"].append("clear")
                 else:
                     d["icons"].append("clouds")
-
         out = []
         for i in range(min(3, len(order))):
             dd = days[order[i]]
@@ -204,7 +202,6 @@ def get_weather():
                 wd = datetime.strptime(order[i], "%Y-%m-%d").weekday()
                 label = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][wd]
             out.append({"day": label, "high": high, "low": low, "icon_name": mapped})
-
         _weather_cache["data"] = out
         _weather_cache["ts"] = now
         return out
@@ -214,25 +211,28 @@ def get_weather():
 
 
 # =====================================================================
-# --- Endpoints (identical to the dummy) ---
+# --- Device endpoints ---
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
 def get_display(device_id: str):
     cfg = get_config(device_id)
+    reboot = cfg.get("reboot", False)
+    if reboot:
+        cfg["reboot"] = False     # one-shot: clear it so we don't reboot-loop
     return {
         "brightness": cfg["brightness"],
-        "mode": cfg["mode"],
         "trains": get_trains(),
         "weather": get_weather(),
         "message": cfg["message"],
+        "reboot": reboot,
         "server_time": int(time.time()),
     }
 
 
 class ConfigUpdate(BaseModel):
     brightness: Optional[float] = None
-    mode: Optional[str] = None
     message: Optional[str] = None
+    reboot: Optional[bool] = None
 
 
 @app.post("/api/device/{device_id}/config")
@@ -240,16 +240,35 @@ def update_config(device_id: str, update: ConfigUpdate):
     cfg = get_config(device_id)
     if update.brightness is not None:
         cfg["brightness"] = update.brightness
-    if update.mode is not None:
-        cfg["mode"] = update.mode.upper()
     if update.message is not None:
         cfg["message"] = update.message
+    if update.reboot is not None:
+        cfg["reboot"] = update.reboot
     return cfg
+
+
+# =====================================================================
+# --- Firmware (OTA) endpoints ---
+# =====================================================================
+@app.get("/firmware/version")
+def firmware_version():
+    return {"version": FIRMWARE_VERSION}
+
+
+@app.get("/firmware/app")
+def firmware_app():
+    try:
+        with open("device_app.py") as f:
+            return PlainTextResponse(f.read())
+    except OSError:
+        return PlainTextResponse("# device_app.py not found in repo", status_code=404)
 
 
 @app.get("/")
 def root():
     return {"status": "ok",
+            "firmware_version": FIRMWARE_VERSION,
             "rdm_key_set": bool(RDM_API_KEY),
             "owm_key_set": bool(OWM_API_KEY),
             "devices": list(DEVICE_CONFIG.keys())}
+
