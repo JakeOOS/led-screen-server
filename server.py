@@ -31,7 +31,7 @@ from pydantic import BaseModel
 app = FastAPI()
 
 # Bump this every time you change device_app.py.
-FIRMWARE_VERSION = "1"
+FIRMWARE_VERSION = "2"
 
 # --- Secrets (set as environment variables in Render; never hardcode) ---
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
