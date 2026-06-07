@@ -374,7 +374,11 @@ def main():
             last_brightness = state["brightness"]
 
         # Loop the screens locally on a smooth clock (independent of polling).
-        mode = ROTATION[int(now // SCREEN_SECONDS) % len(ROTATION)]
+        # PHONE only joins the loop while there's a message to show.
+        rotation = list(ROTATION)
+        if state.get("message"):
+            rotation.append("PHONE")
+        mode = rotation[int(now // SCREEN_SECONDS) % len(rotation)]
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
         elif mode == "WEATHER": draw_weather_3col(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
