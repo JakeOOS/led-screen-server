@@ -253,14 +253,3 @@ def root():
             "rdm_key_set": bool(RDM_API_KEY),
             "owm_key_set": bool(OWM_API_KEY),
             "devices": list(DEVICE_CONFIG.keys())}
-
-@app.get("/debug/rdm/{station}")
-def debug_rdm(station: str):
-    r = requests.get(RDM_URL_BASE + station,
-                     headers={"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-    return {
-        "status": r.status_code,
-        "key_len": len(RDM_API_KEY),
-        "key_tail": RDM_API_KEY[-4:] if RDM_API_KEY else None,
-        "body": r.text[:600],
-    }
