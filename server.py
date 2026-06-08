@@ -286,11 +286,15 @@ def firmware_app():
 
 @app.get("/app")
 def control_panel():
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "control.html")
     try:
-        with open("control.html") as f:
+        with open(path) as f:
             return HTMLResponse(f.read())
     except OSError:
-        return HTMLResponse("<h1>control.html not found in repo</h1>", status_code=404)
+        return HTMLResponse(
+            "<h1>control.html not found</h1><p>Make sure control.html sits in "
+            "the same folder as server.py at the repo root.</p>", status_code=404)
 
 
 @app.get("/")
