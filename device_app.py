@@ -1,18 +1,13 @@
 # =====================================================================
-#  SCREEN APP
+#  SCREEN APP  (lives as device_app.py on the server, app.py on device)
 # =====================================================================
-#  This is the file you edit to change what the screen does.
-#  It lives in TWO places, with IDENTICAL contents:
-#    - on your SERVER repo as  device_app.py   (the source of truth)
-#    - on the DEVICE as         app.py          (just the initial seed;
-#                                                the bootloader overwrites it
-#                                                from the server on updates)
+#  Capabilities: trains, weather, scrolling messages, a .bin animation
+#  pulled from GitHub, and a clock. WHICH of these show, and how bright,
+#  is decided by the SERVER's schedule (so the phone app can edit it later).
+#  This file just obeys: it renders whatever modes the server allows, at
+#  whatever brightness the server sends.
 #
-#  To ship a change: edit device_app.py on GitHub, bump FIRMWARE_VERSION in
-#  server.py, commit. The device picks it up on its next reboot.
-#
-#  NOTE: there is deliberately NO crash handler at the bottom -- the
-#  bootloader catches crashes so it can roll back. Don't add one back.
+#  No crash handler at the bottom on purpose -- the bootloader handles that.
 # =====================================================================
 
 import time
@@ -21,15 +16,20 @@ import urequests
 import interstate75
 import machine
 import gc
+import os
 
 # --- CONFIG ---
 WIFI_SSID = "SKYWI5D4"
 WIFI_PASSWORD = "Jx14ShNK5u3YPH"
 SERVER_URL = "https://led-screen-server.onrender.com"
 DEVICE_ID = "tulsehill-01"
-POLL_INTERVAL = 30          # seconds between server data polls
-SCREEN_SECONDS = 15         # seconds each screen shows before the loop advances
-ROTATION = ["TRAINS", "WEATHER"]   # add "PHONE" here later if you want messages in the loop
+POLL_INTERVAL = 20           # seconds between server data polls
+SCREEN_SECONDS = 12          # seconds each screen shows before the loop advances
+
+# The special animation you store in GitHub as a raw .bin (64x32x3 per frame)
+ANIM_URL = "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin"
+FRAME_SIZE = 64 * 32 * 3
+ANIM_REFRESH = 3600          # re-download the animation at most once an hour
 
 # --- COLORS ---
 COL_WHITE  = (255, 255, 255)
@@ -42,6 +42,8 @@ COL_BLACK  = (0, 0, 0)
 COL_GREEN  = (0, 255, 0)
 
 CURRENT_BRIGHTNESS = 0.6
+BRIGHTNESS_LUT = bytearray([int(i * CURRENT_BRIGHTNESS) for i in range(256)])
+current_anim_frame = -1
 
 # --- HARDWARE INIT ---
 try:
@@ -97,6 +99,20 @@ FONT_BOLD_5X5 = {
     '8': [" ### ", "## ##", " ### ", "## ##", " ### "], '9': [" ### ", "## ##", " ####", "   ##", " ### "],
     ' ': ["     ", "     ", "     ", "     ", "     "], '-': ["     ", "     ", "#####", "     ", "     "],
     '?': [" ### ", "   ##", "  ## ", "     ", "  ## "], '!': ["  ## ", "  ## ", "  ## ", "     ", "  ## "]
+}
+
+FONT_TALL_5X11 = {
+    '0': [" ### ", "## ##", "## ##", "## ##", "## ##", "## ##", "## ##", "## ##", "## ##", "## ##", " ### "],
+    '1': ["  ## ", " ### ", "  ## ", "  ## ", "  ## ", "  ## ", "  ## ", "  ## ", "  ## ", "  ## ", "#####"],
+    '2': [" ### ", "## ##", "   ##", "   ##", "  ## ", " ##  ", "##   ", "##   ", "##   ", "##   ", "#####"],
+    '3': ["#####", "   ##", "   ##", "   ##", "  ###", "   ##", "   ##", "   ##", "   ##", "   ##", "#####"],
+    '4': ["   ##", "  ###", " ## #", "## ##", "## ##", "#####", "   ##", "   ##", "   ##", "   ##", "   ##"],
+    '5': ["#####", "##   ", "##   ", "#### ", "   ##", "   ##", "   ##", "   ##", "## ##", "## ##", " ### "],
+    '6': [" ### ", "##   ", "##   ", "##   ", "#### ", "## ##", "## ##", "## ##", "## ##", "## ##", " ### "],
+    '7': ["#####", "   ##", "   ##", "   ##", "  ## ", "  ## ", "  ## ", " ##  ", " ##  ", " ##  ", " ##  "],
+    '8': [" ### ", "## ##", "## ##", "## ##", " ### ", "## ##", "## ##", "## ##", "## ##", "## ##", " ### "],
+    '9': [" ### ", "## ##", "## ##", "## ##", "## ##", " ####", "   ##", "   ##", "   ##", "## ##", " ### "],
+    ':': ["   ", "   ", "   ", " ##", " ##", "   ", " ##", " ##", "   ", "   ", "   "]
 }
 
 # =====================================================================
@@ -210,10 +226,13 @@ def fetch_display_state(current_state):
                 trains.append({"badge": row["badge"], "badge_col": tuple(row["badge_col"]), "times": times})
             return {
                 "brightness": data.get("brightness", 0.6),
+                "allowed_modes": data.get("allowed_modes", ["TRAINS", "WEATHER"]),
                 "trains": trains,
                 "weather": data.get("weather", []),
                 "message": data.get("message", ""),
                 "reboot": data.get("reboot", False),
+                "epoch": data.get("epoch", 0),
+                "tz_offset": data.get("tz_offset", 0),
             }
         else:
             print("Server status", r.status_code)
@@ -221,6 +240,86 @@ def fetch_display_state(current_state):
     except Exception as e:
         print("Server poll failed:", e)
     return current_state
+
+# =====================================================================
+# --- ANIMATION (.bin from GitHub) ---
+# =====================================================================
+def anim_available():
+    try:
+        return os.stat("anim.bin")[6] >= FRAME_SIZE
+    except OSError:
+        return False
+
+def fetch_animation():
+    print("Fetching animation...")
+    gc.collect()
+    tmp_path = "anim.tmp"
+    try:
+        r = urequests.get(ANIM_URL + "?t=" + str(time.ticks_ms()), timeout=20)
+        if r.status_code != 200:
+            print("Anim fetch status", r.status_code)
+            r.close(); return False
+        expected = None
+        try:
+            cl = r.headers.get("Content-Length")
+            if cl: expected = int(cl)
+        except Exception:
+            expected = None
+        written = 0
+        with open(tmp_path, "wb") as f:
+            while True:
+                chunk = r.raw.read(1024)
+                if not chunk: break
+                f.write(chunk)
+                written += len(chunk)
+        r.close()
+        valid = written > 0 and (written % FRAME_SIZE == 0)
+        if expected is not None:
+            valid = valid and (written == expected)
+        if valid:
+            try: os.remove("anim.bin")
+            except OSError: pass
+            os.rename(tmp_path, "anim.bin")
+            print("Animation updated:", written, "bytes")
+            return True
+        print("Discarding bad animation download:", written, "bytes")
+        try: os.remove(tmp_path)
+        except OSError: pass
+        return False
+    except Exception as e:
+        print("Anim fetch error:", e)
+        try: os.remove(tmp_path)
+        except OSError: pass
+        return False
+
+def draw_animation(ref_ticks):
+    global current_anim_frame
+    try:
+        with open("anim.bin", "rb") as f:
+            f.seek(0, 2)
+            file_size = f.tell()
+            if file_size < FRAME_SIZE:
+                return
+            num_frames = file_size // FRAME_SIZE
+            frame_idx = (ref_ticks // 100) % num_frames
+            if frame_idx == current_anim_frame:
+                return
+            current_anim_frame = frame_idx
+            f.seek(frame_idx * FRAME_SIZE)
+            frame_data = f.read(FRAME_SIZE)
+            set_pen = graphics.set_pen
+            create_pen = graphics.create_pen
+            pixel = graphics.pixel
+            lut = BRIGHTNESS_LUT
+            idx = 0
+            for y in range(32):
+                for x in range(64):
+                    set_pen(create_pen(lut[frame_data[idx]], lut[frame_data[idx + 1]], lut[frame_data[idx + 2]]))
+                    pixel(x, y)
+                    idx += 3
+    except OSError:
+        screen.clear()
+        screen.text("NO ANIM", 16, 14, COL_RED, font=FONT_3X5)
 
 # =====================================================================
 # --- RENDERERS ---
@@ -344,52 +443,102 @@ def draw_phone_screen(msg, ref_time):
                 screen.text(line, x, offset_y, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
             offset_y += 7
 
+def draw_clock(local_struct):
+    screen.clear()
+    hh = "%02d" % local_struct[3]
+    mm = "%02d" % local_struct[4]
+    screen.text(hh + ":" + mm, 5, 5, COL_WHITE, font=FONT_TALL_5X11, scale=2, spacing=2)
+
 # =====================================================================
 # --- CORE LOOP ---
 # =====================================================================
 def main():
     connect_wifi()
-    state = {"brightness": 0.6, "trains": [], "weather": [], "message": "", "reboot": False}
+    state = {"brightness": 0.2, "allowed_modes": ["TRAINS", "WEATHER"],
+             "trains": [], "weather": [], "message": "", "reboot": False,
+             "epoch": 0, "tz_offset": 0}
+    sync_tick = time.ticks_ms()
     last_poll = -9999
+    last_anim_fetch = -9999
     last_brightness = -1
-    global CURRENT_BRIGHTNESS
+    last_message = ""
+    last_mode = ""
+    priority_until = 0
+    global CURRENT_BRIGHTNESS, BRIGHTNESS_LUT, current_anim_frame
 
     while True:
         now = time.time()
         now_ticks = time.ticks_ms()
 
         if check_wifi() and (now - last_poll > POLL_INTERVAL):
-            state = fetch_display_state(state)
-            last_poll = now
-            # Remote command: if the server says reboot, do it (this is how
-            # you make the device pick up a new app version hands-free).
-            if state.get("reboot"):
+            new_state = fetch_display_state(state)
+            if new_state.get("reboot"):
                 print("Reboot requested by server")
                 time.sleep(1)
                 machine.reset()
+            msg = new_state.get("message", "")
+            if msg and msg != last_message:
+                priority_until = now + SCREEN_SECONDS   # pop a new message up promptly
+            last_message = msg
+            state = new_state
+            sync_tick = now_ticks
+            last_poll = now
 
+        # Refresh the animation hourly, but only if the schedule ever uses it.
+        if check_wifi() and ("ANIM" in state.get("allowed_modes", [])) and (now - last_anim_fetch > ANIM_REFRESH):
+            fetch_animation()
+            last_anim_fetch = now
+            current_anim_frame = -1
+
+        # Apply brightness from the schedule when it changes.
         if state["brightness"] != last_brightness:
             CURRENT_BRIGHTNESS = state["brightness"]
+            BRIGHTNESS_LUT = bytearray([int(i * CURRENT_BRIGHTNESS) for i in range(256)])
             screen.reset_pens()
+            current_anim_frame = -1
             last_brightness = state["brightness"]
 
-        # Loop the screens locally on a smooth clock (independent of polling).
-        # PHONE only joins the loop while there's a message to show.
-        rotation = list(ROTATION)
-        if state.get("message"):
-            rotation.append("PHONE")
-        mode = rotation[int(now // SCREEN_SECONDS) % len(rotation)]
+        # Local clock, kept accurate from the server's time without needing NTP.
+        if state["epoch"]:
+            elapsed = time.ticks_diff(now_ticks, sync_tick) // 1000
+            local_struct = time.localtime(state["epoch"] + state["tz_offset"] + elapsed)
+        else:
+            local_struct = time.localtime()
+
+        # Build the cycle from the schedule's allowed modes, dropping any that
+        # have nothing to show right now (no message / no animation file).
+        allowed = state.get("allowed_modes", ["TRAINS", "WEATHER"])
+        cycle = []
+        for m in allowed:
+            if m == "PHONE" and not state["message"]:
+                continue
+            if m == "ANIM" and not anim_available():
+                continue
+            cycle.append(m)
+        if not cycle:
+            cycle = ["CLOCK"]
+
+        # A freshly-arrived message jumps to the front for SCREEN_SECONDS.
+        if now < priority_until and state["message"] and "PHONE" in allowed:
+            mode = "PHONE"
+        else:
+            mode = cycle[int(now // SCREEN_SECONDS) % len(cycle)]
+
+        if mode == "ANIM" and last_mode != "ANIM":
+            current_anim_frame = -1
+        last_mode = mode
+
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
         elif mode == "WEATHER": draw_weather_3col(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
+        elif mode == "ANIM":    draw_animation(now_ticks)
+        elif mode == "CLOCK":   draw_clock(local_struct)
         else:                   screen.clear()
 
         i75.update()
         time.sleep(0.02)
 
 
-# No try/except here on purpose: let crashes propagate so the bootloader
-# can decide whether to roll back. Do not wrap this.
+# No try/except here on purpose -- the bootloader handles crashes/rollback.
 if __name__ == "__main__":
     main()
-
