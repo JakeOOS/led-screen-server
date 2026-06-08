@@ -250,47 +250,92 @@ def anim_available():
     except OSError:
         return False
 
+def free_bytes():
+    try:
+        s = os.statvfs("/")
+        return s[0] * s[3]
+    except Exception:
+        return -1
+
 def fetch_animation():
-    print("Fetching animation...")
+    """Download the .bin, being careful with limited flash. Returns a short
+    status string: 'OK', 'HTTP nnn', 'FULL nn' (disk), 'BAD SIZE', or 'ERR n'."""
+    print("Fetching animation... free:", free_bytes())
     gc.collect()
-    tmp_path = "anim.tmp"
+    # Clear any half-written temp from a previous failed attempt.
+    try: os.remove("anim.tmp")
+    except OSError: pass
     try:
         r = urequests.get(ANIM_URL + "?t=" + str(time.ticks_ms()), timeout=20)
         if r.status_code != 200:
-            print("Anim fetch status", r.status_code)
-            r.close(); return False
+            code = r.status_code
+            r.close()
+            return "HTTP %d" % code
         expected = None
         try:
             cl = r.headers.get("Content-Length")
             if cl: expected = int(cl)
         except Exception:
             expected = None
+
+        # If the incoming file won't fit alongside the current one, drop the
+        # old anim.bin first to make room (this is what beats error 28).
+        if expected:
+            fb = free_bytes()
+            if 0 <= fb < expected + 20000:        # 20KB safety margin
+                try: os.remove("anim.bin")
+                except OSError: pass
+                gc.collect()
+            fb = free_bytes()
+            if 0 <= fb < expected + 20000:        # still won't fit
+                r.close()
+                return "FULL %d" % (expected // 1024)
+
         written = 0
-        with open(tmp_path, "wb") as f:
-            while True:
-                chunk = r.raw.read(1024)
-                if not chunk: break
-                f.write(chunk)
-                written += len(chunk)
-        r.close()
+        try:
+            with open("anim.tmp", "wb") as f:
+                while True:
+                    chunk = r.raw.read(512)
+                    if not chunk: break
+                    f.write(chunk)
+                    written += len(chunk)
+        finally:
+            r.close()
+
         valid = written > 0 and (written % FRAME_SIZE == 0)
         if expected is not None:
             valid = valid and (written == expected)
         if valid:
             try: os.remove("anim.bin")
             except OSError: pass
-            os.rename(tmp_path, "anim.bin")
+            os.rename("anim.tmp", "anim.bin")
             print("Animation updated:", written, "bytes")
-            return True
-        print("Discarding bad animation download:", written, "bytes")
-        try: os.remove(tmp_path)
+            return "OK"
+        print("Bad anim download:", written, "bytes")
+        try: os.remove("anim.tmp")
         except OSError: pass
-        return False
+        return "BAD SIZE"
+    except OSError as e:
+        try: os.remove("anim.tmp")
+        except OSError: pass
+        return "ERR %s" % (e.args[0] if e.args else "?")
     except Exception as e:
-        print("Anim fetch error:", e)
-        try: os.remove(tmp_path)
+        try: os.remove("anim.tmp")
         except OSError: pass
-        return False
+        print("Anim fetch error:", e)
+        return "ERR"
+
+def draw_status(lines, color=COL_CYAN):
+    """A simple centred status/loading screen for boot and diagnostics."""
+    screen.clear()
+    total_h = len(lines) * 6 - 1
+    y = (32 - total_h) // 2
+    for ln in lines:
+        w = len(ln) * 4 - 1
+        x = max(0, (64 - w) // 2)
+        screen.text(ln, x, y, color, font=FONT_3X5)
+        y += 6
+    i75.update()
 
 def draw_animation(ref_ticks):
     global current_anim_frame
@@ -453,7 +498,14 @@ def draw_clock(local_struct):
 # --- CORE LOOP ---
 # =====================================================================
 def main():
-    connect_wifi()
+    draw_status(["STARTING"])
+    if connect_wifi():
+        draw_status(["WIFI OK"], COL_GREEN)
+    else:
+        draw_status(["NO WIFI"], COL_RED)
+    time.sleep(0.5)
+    draw_status(["SYNCING"])
+    print("Boot free bytes:", free_bytes())
     state = {"brightness": 0.2, "allowed_modes": ["TRAINS", "WEATHER"],
              "trains": [], "weather": [], "message": "", "reboot": False,
              "epoch": 0, "tz_offset": 0}
@@ -486,7 +538,11 @@ def main():
 
         # Refresh the animation hourly, but only if the schedule ever uses it.
         if check_wifi() and ("ANIM" in state.get("allowed_modes", [])) and (now - last_anim_fetch > ANIM_REFRESH):
-            fetch_animation()
+            draw_status(["GETTING", "ANIM"])
+            result = fetch_animation()
+            if result != "OK":
+                draw_status(["ANIM FAIL", result], COL_RED)
+                time.sleep(2)
             last_anim_fetch = now
             current_anim_frame = -1
 
@@ -542,3 +598,4 @@ def main():
 # No try/except here on purpose -- the bootloader handles crashes/rollback.
 if __name__ == "__main__":
     main()
+
