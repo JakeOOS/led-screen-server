@@ -1,20 +1,17 @@
 """
-TidByt-style LED screen — control server (LIVE DATA + OTA VERSION).
+LED screen control server (LIVE DATA + OTA + SCHEDULE).
 
-Serves:
-  - live trains + weather to the device
-  - remote config (brightness / message / reboot) per device
-  - FIRMWARE: the device bootloader pulls app code from here
-        GET /firmware/version  -> {"version": "..."}
-        GET /firmware/app       -> raw text of device_app.py
+The SCHEDULE lives here on purpose: it's the policy your phone app will edit
+later. The device just obeys whatever this returns.
 
-To ship a new app version:
-  1. edit device_app.py in this repo
-  2. bump FIRMWARE_VERSION below
-  3. commit -> Render redeploys
-  4. reboot the device (power cycle, OR set its reboot flag remotely:
-        POST /api/device/<id>/config   body: {"reboot": true}
-     the device picks up the new version on its next boot)
+Schedule (Europe/London time):
+  05:00-12:00  brightness 1.0   trains, weather, messages
+  12:00-19:00  brightness 0.5   everything
+  19:00-00:00  brightness 0.2   messages, animation, clock
+  00:00-05:00  brightness 0.2   everything
+
+To ship a new device app: edit device_app.py, bump FIRMWARE_VERSION, commit,
+then reboot the device (power cycle, or POST {"reboot": true} to its config).
 """
 
 import os
@@ -25,28 +22,24 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# Bump this every time you change device_app.py.
-FIRMWARE_VERSION = "2"
+FIRMWARE_VERSION = "3"        # bump this whenever device_app.py changes
 
-# --- Secrets (set as environment variables in Render; never hardcode) ---
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
 
-# --- Location / board config (becomes per-device settings later) ---
 OWM_LAT = "51.5074"
 OWM_LON = "-0.1278"
 
 RDM_URL_BASE = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 UK_TZ = ZoneInfo("Europe/London")
-
-# These headers are required — without a browser-like User-Agent the
-# Rail Data Marketplace gateway returns a bare 403 before reaching the data.
 RDM_HEADERS = {"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+MESSAGE_TTL = 3600            # messages auto-clear after 1 hour
 
 BOARDS = [
     {"badge": "TLK", "badge_col": [150, 0, 0],  "station": "TUH",
@@ -58,10 +51,30 @@ BOARDS = [
 ]
 
 # =====================================================================
+# --- Schedule (this is what the phone app will eventually control) ---
+# =====================================================================
+def get_schedule():
+    """Return (brightness, allowed_modes) for the current London time."""
+    h = datetime.now(UK_TZ).hour
+    if 5 <= h < 12:
+        return 1.0, ["TRAINS", "WEATHER", "PHONE"]
+    if 12 <= h < 19:
+        return 0.5, ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]
+    if 19 <= h < 24:
+        return 0.2, ["PHONE", "ANIM", "CLOCK"]
+    return 0.2, ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]   # 00:00-05:00
+
+
+def uk_tz_offset_seconds():
+    off = datetime.now(UK_TZ).utcoffset()
+    return int(off.total_seconds()) if off else 0
+
+
+# =====================================================================
 # --- Device config store ---
 # =====================================================================
 DEVICE_CONFIG = {}
-DEFAULT_CONFIG = {"brightness": 0.6, "message": "HELLO FROM THE SERVER", "reboot": False}
+DEFAULT_CONFIG = {"message": "", "message_ts": 0, "reboot": False}
 
 
 def get_config(device_id: str):
@@ -70,8 +83,15 @@ def get_config(device_id: str):
     return DEVICE_CONFIG[device_id]
 
 
+def current_message(cfg):
+    msg = cfg.get("message", "")
+    if msg and (time.time() - cfg.get("message_ts", 0) > MESSAGE_TTL):
+        return ""               # expired
+    return msg
+
+
 # =====================================================================
-# --- TRAINS (Rail Data Marketplace) ---
+# --- TRAINS ---
 # =====================================================================
 _station_cache = {}
 STATION_TTL = 60
@@ -127,7 +147,6 @@ def _parse_service(t):
 
 def get_trains():
     if not RDM_API_KEY:
-        print("WARNING: RDM_API_KEY not set — serving placeholder trains.")
         return [{"badge": b["badge"], "badge_col": b["badge_col"],
                  "times": [{"text": "--", "color": [80, 80, 80]}]} for b in BOARDS]
     boards = []
@@ -150,7 +169,7 @@ def get_trains():
 
 
 # =====================================================================
-# --- WEATHER (OpenWeather) ---
+# --- WEATHER ---
 # =====================================================================
 _weather_cache = {"ts": 0, "data": []}
 WEATHER_TTL = 1800
@@ -161,7 +180,6 @@ def get_weather():
     if _weather_cache["data"] and (now - _weather_cache["ts"] < WEATHER_TTL):
         return _weather_cache["data"]
     if not OWM_API_KEY:
-        print("WARNING: OWM_API_KEY not set — serving placeholder weather.")
         return [{"day": "TDY", "high": 0, "low": 0, "icon_name": "clouds"}]
     try:
         url = (f"https://api.openweathermap.org/data/2.5/forecast"
@@ -216,21 +234,24 @@ def get_weather():
 @app.get("/api/device/{device_id}/display")
 def get_display(device_id: str):
     cfg = get_config(device_id)
+    brightness, allowed = get_schedule()
     reboot = cfg.get("reboot", False)
     if reboot:
-        cfg["reboot"] = False     # one-shot: clear it so we don't reboot-loop
+        cfg["reboot"] = False
     return {
-        "brightness": cfg["brightness"],
+        "brightness": brightness,
+        "allowed_modes": allowed,
         "trains": get_trains(),
         "weather": get_weather(),
-        "message": cfg["message"],
+        "message": current_message(cfg),
         "reboot": reboot,
+        "epoch": int(time.time()),
+        "tz_offset": uk_tz_offset_seconds(),
         "server_time": int(time.time()),
     }
 
 
 class ConfigUpdate(BaseModel):
-    brightness: Optional[float] = None
     message: Optional[str] = None
     reboot: Optional[bool] = None
 
@@ -238,13 +259,12 @@ class ConfigUpdate(BaseModel):
 @app.post("/api/device/{device_id}/config")
 def update_config(device_id: str, update: ConfigUpdate):
     cfg = get_config(device_id)
-    if update.brightness is not None:
-        cfg["brightness"] = update.brightness
     if update.message is not None:
         cfg["message"] = update.message
+        cfg["message_ts"] = time.time()      # start the 1-hour clock
     if update.reboot is not None:
         cfg["reboot"] = update.reboot
-    return cfg
+    return {"message": cfg["message"], "reboot": cfg["reboot"]}
 
 
 # =====================================================================
@@ -264,11 +284,22 @@ def firmware_app():
         return PlainTextResponse("# device_app.py not found in repo", status_code=404)
 
 
+@app.get("/app")
+def control_panel():
+    try:
+        with open("control.html") as f:
+            return HTMLResponse(f.read())
+    except OSError:
+        return HTMLResponse("<h1>control.html not found in repo</h1>", status_code=404)
+
+
 @app.get("/")
 def root():
+    bright, allowed = get_schedule()
     return {"status": "ok",
             "firmware_version": FIRMWARE_VERSION,
             "rdm_key_set": bool(RDM_API_KEY),
             "owm_key_set": bool(OWM_API_KEY),
+            "now_brightness": bright,
+            "now_allowed": allowed,
             "devices": list(DEVICE_CONFIG.keys())}
-
