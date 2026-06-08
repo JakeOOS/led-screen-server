@@ -337,6 +337,26 @@ def draw_status(lines, color=COL_CYAN):
         y += 6
     i75.update()
 
+def draw_checklist(steps):
+    """Boot checklist. steps = list of [label, state] where state is one of
+    'pending' (grey), 'active' (cyan), 'done' (green), 'fail' (red)."""
+    screen.clear()
+    y = 5
+    for label, st in steps:
+        if st == "done":
+            dot = COL_GREEN; txt = COL_WHITE
+        elif st == "active":
+            dot = COL_CYAN; txt = COL_WHITE
+        elif st == "fail":
+            dot = COL_RED; txt = COL_RED
+        else:
+            dot = COL_GREY; txt = COL_GREY
+        graphics.set_pen(screen.create_pen(dot))
+        graphics.rectangle(2, y + 1, 3, 3)
+        screen.text(label, 9, y, txt, font=FONT_3X5)
+        y += 9
+    i75.update()
+
 def draw_animation(ref_ticks):
     global current_anim_frame
     try:
@@ -498,19 +518,33 @@ def draw_clock(local_struct):
 # --- CORE LOOP ---
 # =====================================================================
 def main():
-    draw_status(["STARTING"])
-    if connect_wifi():
-        draw_status(["WIFI OK"], COL_GREEN)
-    else:
-        draw_status(["NO WIFI"], COL_RED)
-    time.sleep(0.5)
-    draw_status(["SYNCING"])
     print("Boot free bytes:", free_bytes())
     state = {"brightness": 0.2, "allowed_modes": ["TRAINS", "WEATHER"],
              "trains": [], "weather": [], "message": "", "reboot": False,
              "epoch": 0, "tz_offset": 0}
+
+    # Boot checklist: each row ticks green as it completes.
+    steps = [["WIFI", "pending"], ["WEATHER", "pending"], ["TRAINS", "pending"]]
+    draw_checklist(steps)
+
+    steps[0][1] = "active"; draw_checklist(steps)
+    wifi_ok = connect_wifi()
+    steps[0][1] = "done" if wifi_ok else "fail"; draw_checklist(steps)
+    time.sleep(0.3)
+
+    # A single server poll returns both weather and trains; reveal them in turn.
+    steps[1][1] = "active"; draw_checklist(steps)
+    state = fetch_display_state(state)
+    steps[1][1] = "done" if state.get("weather") else "fail"; draw_checklist(steps)
+    time.sleep(0.4)
+
+    steps[2][1] = "active"; draw_checklist(steps)
+    time.sleep(0.3)
+    steps[2][1] = "done" if state.get("trains") else "fail"; draw_checklist(steps)
+    time.sleep(0.6)
+
     sync_tick = time.ticks_ms()
-    last_poll = -9999
+    last_poll = time.time()        # we already polled above; don't re-poll instantly
     last_anim_fetch = -9999
     last_brightness = -1
     last_message = ""
@@ -598,4 +632,3 @@ def main():
 # No try/except here on purpose -- the bootloader handles crashes/rollback.
 if __name__ == "__main__":
     main()
-
