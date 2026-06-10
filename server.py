@@ -1,24 +1,26 @@
 """
-LED screen control server (LIVE DATA + OTA + SCHEDULE).
+LED screen control server (LIVE DATA + OTA + SCHEDULE + PERSISTENT CONFIG).
 
-The SCHEDULE lives here on purpose: it's the policy your phone app will edit
-later. The device just obeys whatever this returns.
+Per-device config (train boards + schedule + messages) is stored in Supabase so
+it SURVIVES restarts. The device API shape is unchanged, so no device update is
+needed for this step. Pairing is added in a later step on top of this.
 
-Schedule (Europe/London time):
-  05:00-12:00  brightness 1.0   trains, weather, messages
-  12:00-19:00  brightness 0.5   everything
-  19:00-00:00  brightness 0.2   messages, animation, clock
-  00:00-05:00  brightness 0.2   everything
+Required environment variables (set in Render):
+  OWM_API_KEY    OpenWeather key
+  RDM_API_KEY    Rail Data Marketplace key
+  SUPABASE_URL   e.g. https://abcd1234.supabase.co
+  SUPABASE_KEY   the service_role key (Project Settings -> API)
 
-To ship a new device app: edit device_app.py, bump FIRMWARE_VERSION, commit,
-then reboot the device (power cycle, or POST {"reboot": true} to its config).
+If SUPABASE_URL/KEY are absent, the server falls back to in-memory storage with
+default config, so it still runs (just without persistence).
 """
 
 import os
 import time
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Optional
+from typing import Optional, List
 
 import requests
 from fastapi import FastAPI
@@ -27,21 +29,22 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "7"        # bump this whenever device_app.py changes
+FIRMWARE_VERSION = "8"        # unchanged this step (no device update needed)
 
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 OWM_LAT = "51.5074"
 OWM_LON = "-0.1278"
-
 RDM_URL_BASE = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 UK_TZ = ZoneInfo("Europe/London")
 RDM_HEADERS = {"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+MESSAGE_TTL = 3600
 
-MESSAGE_TTL = 3600            # messages auto-clear after 1 hour
-
-BOARDS = [
+# --- Defaults for a brand-new device (your current Tulse Hill setup) --------
+DEFAULT_BOARDS = [
     {"badge": "TLK", "badge_col": [150, 0, 0],  "station": "TUH",
      "match": ["St Albans", "Luton", "Bedford", "Farringdon", "Elephant & Castle"]},
     {"badge": "LBG", "badge_col": [0, 200, 50], "station": "TUH",
@@ -49,45 +52,100 @@ BOARDS = [
     {"badge": "VIC", "badge_col": [0, 150, 200], "station": "WDU",
      "match": ["Victoria"]},
 ]
+# Schedule = list of bands. The band whose 'start' hour is the latest one <= now
+# (London time) is active. brightness 0..1, modes is which screens may show.
+DEFAULT_SCHEDULE = [
+    {"start": 5,  "brightness": 1.0, "modes": ["TRAINS", "WEATHER", "PHONE"]},
+    {"start": 12, "brightness": 0.5, "modes": ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]},
+    {"start": 19, "brightness": 0.2, "modes": ["PHONE", "ANIM", "CLOCK"]},
+    {"start": 0,  "brightness": 0.2, "modes": ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]},
+]
 
 # =====================================================================
-# --- Schedule (this is what the phone app will eventually control) ---
+# --- Persistence layer (Supabase REST, with in-memory fallback) ---
 # =====================================================================
-def get_schedule():
-    """Return (brightness, allowed_modes) for the current London time."""
+SB_DEVICES = (SUPABASE_URL + "/rest/v1/devices") if SUPABASE_URL else ""
+SB_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY,
+              "Content-Type": "application/json"}
+_MEM = {}   # fallback store when Supabase isn't configured
+
+
+def _gen_code():
+    return "".join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
+
+
+def _new_device(device_id):
+    return {"device_id": device_id, "name": "", "paired": True, "pair_code": _gen_code(),
+            "config": {"boards": DEFAULT_BOARDS, "schedule": DEFAULT_SCHEDULE},
+            "message": "", "message_ts": 0, "reboot": False, "last_seen": int(time.time())}
+
+
+def get_device(device_id):
+    """Fetch a device row, creating it with defaults if it doesn't exist yet."""
+    if not SB_DEVICES:
+        if device_id not in _MEM:
+            _MEM[device_id] = _new_device(device_id)
+        return _MEM[device_id]
+    try:
+        r = requests.get(SB_DEVICES + "?device_id=eq." + device_id + "&select=*",
+                         headers=SB_HEADERS, timeout=8)
+        if r.status_code == 200:
+            rows = r.json()
+            if rows:
+                return rows[0]
+    except Exception as e:
+        print("Supabase get error:", e)
+        return _new_device(device_id)      # transient: serve defaults, don't crash
+    # not found -> create it
+    row = _new_device(device_id)
+    try:
+        h = dict(SB_HEADERS); h["Prefer"] = "resolution=merge-duplicates,return=representation"
+        r = requests.post(SB_DEVICES, headers=h, json=row, timeout=8)
+        if r.status_code in (200, 201):
+            d = r.json()
+            return d[0] if d else row
+    except Exception as e:
+        print("Supabase create error:", e)
+    return row
+
+
+def save_device(device_id, fields):
+    """Persist a partial update (dict of column -> value)."""
+    if not SB_DEVICES:
+        if device_id in _MEM:
+            _MEM[device_id].update(fields)
+        return
+    try:
+        h = dict(SB_HEADERS); h["Prefer"] = "return=minimal"
+        requests.patch(SB_DEVICES + "?device_id=eq." + device_id,
+                       headers=h, json=fields, timeout=8)
+    except Exception as e:
+        print("Supabase save error:", e)
+
+
+def current_message(dev):
+    msg = dev.get("message", "")
+    if msg and (time.time() - (dev.get("message_ts") or 0) > MESSAGE_TTL):
+        return ""
+    return msg
+
+
+def schedule_for(dev):
+    sched = (dev.get("config") or {}).get("schedule") or DEFAULT_SCHEDULE
     h = datetime.now(UK_TZ).hour
-    if 5 <= h < 12:
-        return 1.0, ["TRAINS", "WEATHER", "PHONE"]
-    if 12 <= h < 19:
-        return 0.5, ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]
-    if 19 <= h < 24:
-        return 0.2, ["PHONE", "ANIM", "CLOCK"]
-    return 0.2, ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]   # 00:00-05:00
+    best = None
+    for band in sched:
+        s = band.get("start", 0)
+        if s <= h and (best is None or s > best.get("start", -1)):
+            best = band
+    if best is None:                       # before the earliest band -> wrap to latest
+        best = max(sched, key=lambda b: b.get("start", 0))
+    return best.get("brightness", 0.5), best.get("modes", ["TRAINS", "WEATHER"])
 
 
 def uk_tz_offset_seconds():
     off = datetime.now(UK_TZ).utcoffset()
     return int(off.total_seconds()) if off else 0
-
-
-# =====================================================================
-# --- Device config store ---
-# =====================================================================
-DEVICE_CONFIG = {}
-DEFAULT_CONFIG = {"message": "", "message_ts": 0, "reboot": False}
-
-
-def get_config(device_id: str):
-    if device_id not in DEVICE_CONFIG:
-        DEVICE_CONFIG[device_id] = dict(DEFAULT_CONFIG)
-    return DEVICE_CONFIG[device_id]
-
-
-def current_message(cfg):
-    msg = cfg.get("message", "")
-    if msg and (time.time() - cfg.get("message_ts", 0) > MESSAGE_TTL):
-        return ""               # expired
-    return msg
 
 
 # =====================================================================
@@ -97,7 +155,7 @@ _station_cache = {}
 STATION_TTL = 60
 
 
-def _fetch_station(station: str):
+def _fetch_station(station):
     now = time.time()
     cached = _station_cache.get(station)
     if cached and (now - cached["ts"] < STATION_TTL):
@@ -115,42 +173,40 @@ def _fetch_station(station: str):
     return services
 
 
-def _minutes_until(hhmm: str) -> int:
+def _minutes_until(hhmm):
     if not hhmm or ":" not in hhmm:
         return 999
     now = datetime.now(UK_TZ)
-    current = now.hour * 60 + now.minute
+    cur = now.hour * 60 + now.minute
     h, m = map(int, hhmm.split(":"))
-    diff = (h * 60 + m) - current
+    diff = (h * 60 + m) - cur
     if diff < -1000:
         diff += 24 * 60
     return diff
 
 
 def _parse_service(t):
-    std = t.get("std")
-    etd = t.get("etd")
+    std = t.get("std"); etd = t.get("etd")
     color = [0, 255, 0]
     if etd == "Cancelled":
         return {"text": "CNCL", "color": [255, 50, 50]}
-    check_time = std
+    check = std
     if etd and ":" in etd:
-        check_time = etd
-        color = [255, 140, 0]
+        check = etd; color = [255, 140, 0]
     elif etd == "Delayed":
         color = [255, 140, 0]
-    mins = _minutes_until(check_time)
+    mins = _minutes_until(check)
     if mins < -1:
         return None
     return {"text": "NOW" if mins <= 0 else f"{mins}M", "color": color}
 
 
-def get_trains():
+def get_trains(boards):
     if not RDM_API_KEY:
         return [{"badge": b["badge"], "badge_col": b["badge_col"],
-                 "times": [{"text": "--", "color": [80, 80, 80]}]} for b in BOARDS]
-    boards = []
-    for b in BOARDS:
+                 "times": [{"text": "--", "color": [80, 80, 80]}]} for b in boards]
+    out = []
+    for b in boards:
         services = _fetch_station(b["station"])
         times = []
         for t in services:
@@ -164,12 +220,12 @@ def get_trains():
                     times.append(item)
                 if len(times) >= 6:
                     break
-        boards.append({"badge": b["badge"], "badge_col": b["badge_col"], "times": times})
-    return boards
+        out.append({"badge": b["badge"], "badge_col": b["badge_col"], "times": times})
+    return out
 
 
 # =====================================================================
-# --- WEATHER ---
+# --- WEATHER (shared; per-device location is a later step) ---
 # =====================================================================
 _weather_cache = {"ts": 0, "data": []}
 WEATHER_TTL = 1800
@@ -212,13 +268,8 @@ def get_weather():
             else:
                 non_rain = [c for c in icons if c != "rain"] or icons
                 mapped = max(set(non_rain), key=non_rain.count)
-            if i == 0:
-                label = "TDY"
-            elif i == 1:
-                label = "TMR"
-            else:
-                wd = datetime.strptime(order[i], "%Y-%m-%d").weekday()
-                label = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][wd]
+            label = "TDY" if i == 0 else ("TMR" if i == 1 else
+                     ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][datetime.strptime(order[i], "%Y-%m-%d").weekday()])
             out.append({"day": label, "high": high, "low": low, "icon_name": mapped})
         _weather_cache["data"] = out
         _weather_cache["ts"] = now
@@ -233,17 +284,20 @@ def get_weather():
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
 def get_display(device_id: str):
-    cfg = get_config(device_id)
-    brightness, allowed = get_schedule()
-    reboot = cfg.get("reboot", False)
+    dev = get_device(device_id)
+    reboot = bool(dev.get("reboot"))
+    fields = {"last_seen": int(time.time())}
     if reboot:
-        cfg["reboot"] = False
+        fields["reboot"] = False         # one-shot
+    save_device(device_id, fields)
+    bright, allowed = schedule_for(dev)
+    boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
-        "brightness": brightness,
+        "brightness": bright,
         "allowed_modes": allowed,
-        "trains": get_trains(),
+        "trains": get_trains(boards),
         "weather": get_weather(),
-        "message": current_message(cfg),
+        "message": current_message(dev),
         "reboot": reboot,
         "epoch": int(time.time()),
         "tz_offset": uk_tz_offset_seconds(),
@@ -254,21 +308,36 @@ def get_display(device_id: str):
 class ConfigUpdate(BaseModel):
     message: Optional[str] = None
     reboot: Optional[bool] = None
+    name: Optional[str] = None
+    boards: Optional[list] = None
+    schedule: Optional[list] = None
 
 
 @app.post("/api/device/{device_id}/config")
 def update_config(device_id: str, update: ConfigUpdate):
-    cfg = get_config(device_id)
+    dev = get_device(device_id)
+    fields = {}
     if update.message is not None:
-        cfg["message"] = update.message
-        cfg["message_ts"] = time.time()      # start the 1-hour clock
+        fields["message"] = update.message
+        fields["message_ts"] = int(time.time())
     if update.reboot is not None:
-        cfg["reboot"] = update.reboot
-    return {"message": cfg["message"], "reboot": cfg["reboot"]}
+        fields["reboot"] = update.reboot
+    if update.name is not None:
+        fields["name"] = update.name
+    if update.boards is not None or update.schedule is not None:
+        cfg = dev.get("config") or {}
+        if update.boards is not None:
+            cfg["boards"] = update.boards
+        if update.schedule is not None:
+            cfg["schedule"] = update.schedule
+        fields["config"] = cfg
+    if fields:
+        save_device(device_id, fields)
+    return {"ok": True, "device_id": device_id}
 
 
 # =====================================================================
-# --- Firmware (OTA) endpoints ---
+# --- Firmware (OTA) + control page ---
 # =====================================================================
 @app.get("/firmware/version")
 def firmware_version():
@@ -278,32 +347,28 @@ def firmware_version():
 @app.get("/firmware/app")
 def firmware_app():
     try:
-        with open("device_app.py") as f:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "device_app.py")) as f:
             return PlainTextResponse(f.read())
     except OSError:
-        return PlainTextResponse("# device_app.py not found in repo", status_code=404)
+        return PlainTextResponse("# device_app.py not found", status_code=404)
 
 
 @app.get("/app")
 def control_panel():
     here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, "control.html")
     try:
-        with open(path) as f:
+        with open(os.path.join(here, "control.html")) as f:
             return HTMLResponse(f.read())
     except OSError:
-        return HTMLResponse(
-            "<h1>control.html not found</h1><p>Make sure control.html sits in "
-            "the same folder as server.py at the repo root.</p>", status_code=404)
+        return HTMLResponse("<h1>control.html not found</h1>", status_code=404)
 
 
 @app.get("/")
 def root():
-    bright, allowed = get_schedule()
     return {"status": "ok",
             "firmware_version": FIRMWARE_VERSION,
             "rdm_key_set": bool(RDM_API_KEY),
             "owm_key_set": bool(OWM_API_KEY),
-            "now_brightness": bright,
-            "now_allowed": allowed,
-            "devices": list(DEVICE_CONFIG.keys())}
+            "persistence": "supabase" if SB_DEVICES else "in-memory (NOT persistent)",
+            "devices_in_memory": list(_MEM.keys())}
+
