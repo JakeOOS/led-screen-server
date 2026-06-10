@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "9"        # bumped: device gains a pairing screen
+FIRMWARE_VERSION = "10"        # bumped: device gains a pairing screen
 
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
@@ -364,8 +364,10 @@ def find_device_by_code(code):
                 return d
         return None
     try:
-        r = requests.get(SB_DEVICES + "?pair_code=eq." + code + "&paired=eq.false&select=*",
-                         headers=SB_HEADERS, timeout=8)
+        # ilike = case-insensitive match in Supabase/PostgREST
+        r = requests.get(
+            SB_DEVICES + "?pair_code=ilike." + code + "&paired=eq.false&select=*",
+            headers=SB_HEADERS, timeout=8)
         if r.status_code == 200:
             rows = r.json()
             return rows[0] if rows else None
