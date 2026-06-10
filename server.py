@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "8"        # unchanged this step (no device update needed)
+FIRMWARE_VERSION = "9"        # bumped: device gains a pairing screen
 
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
@@ -75,7 +75,7 @@ def _gen_code():
 
 
 def _new_device(device_id):
-    return {"device_id": device_id, "name": "", "paired": True, "pair_code": _gen_code(),
+    return {"device_id": device_id, "name": "", "paired": False, "pair_code": _gen_code(),
             "config": {"boards": DEFAULT_BOARDS, "schedule": DEFAULT_SCHEDULE},
             "message": "", "message_ts": 0, "reboot": False, "last_seen": int(time.time())}
 
@@ -290,9 +290,22 @@ def get_display(device_id: str):
     if reboot:
         fields["reboot"] = False         # one-shot
     save_device(device_id, fields)
+    if not dev.get("paired", False):
+        return {
+            "paired": False,
+            "pair_code": dev.get("pair_code", ""),
+            "brightness": 0.5,
+            "allowed_modes": ["PAIR"],
+            "trains": [], "weather": [], "message": "",
+            "reboot": reboot,
+            "epoch": int(time.time()),
+            "tz_offset": uk_tz_offset_seconds(),
+            "server_time": int(time.time()),
+        }
     bright, allowed = schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
+        "paired": True,
         "brightness": bright,
         "allowed_modes": allowed,
         "trains": get_trains(boards),
@@ -334,6 +347,43 @@ def update_config(device_id: str, update: ConfigUpdate):
     if fields:
         save_device(device_id, fields)
     return {"ok": True, "device_id": device_id}
+
+
+class PairBody(BaseModel):
+    code: str
+    name: Optional[str] = None
+
+
+def find_device_by_code(code):
+    code = (code or "").strip().upper()
+    if not code:
+        return None
+    if not SB_DEVICES:
+        for d in _MEM.values():
+            if d.get("pair_code", "").upper() == code and not d.get("paired"):
+                return d
+        return None
+    try:
+        r = requests.get(SB_DEVICES + "?pair_code=eq." + code + "&paired=eq.false&select=*",
+                         headers=SB_HEADERS, timeout=8)
+        if r.status_code == 200:
+            rows = r.json()
+            return rows[0] if rows else None
+    except Exception as e:
+        print("Supabase find error:", e)
+    return None
+
+
+@app.post("/api/pair")
+def pair_device(body: PairBody):
+    dev = find_device_by_code(body.code)
+    if not dev:
+        return {"ok": False, "error": "Invalid or already-used code"}
+    fields = {"paired": True}
+    if body.name:
+        fields["name"] = body.name
+    save_device(dev["device_id"], fields)
+    return {"ok": True, "device_id": dev["device_id"], "name": body.name or dev.get("name", "")}
 
 
 # =====================================================================
