@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "6"        # bump this whenever device_app.py changes
+FIRMWARE_VERSION = "7"        # bump this whenever device_app.py changes
 
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
