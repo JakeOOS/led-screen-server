@@ -45,6 +45,13 @@ CURRENT_BRIGHTNESS = 0.6
 BRIGHTNESS_LUT = bytearray([int(i * CURRENT_BRIGHTNESS) for i in range(256)])
 current_anim_frame = -1
 
+# Animation metadata cache (filled by load_anim_meta). Supports the new
+# palette/indexed format (magic 'LDA1', ~2KB/frame) and the legacy raw-RGB
+# format (6KB/frame), auto-detected from the file header.
+ANIM = {"loaded": False, "indexed": False, "w": 64, "h": 32,
+        "nframes": 0, "ncolors": 0, "offset": 0, "fbytes": FRAME_SIZE,
+        "pal": None, "pens": None}
+
 # --- HARDWARE INIT ---
 try:
     i75 = interstate75.Interstate75(display=interstate75.DISPLAY_INTERSTATE75_64X32, panel_type=interstate75.PANEL_FM6126A)
@@ -80,7 +87,7 @@ FONT_3X5 = {
 
 FONT_BOLD_5X5 = {
     'A': [" ### ", "## ##", "#####", "## ##", "## ##"], 'B': ["#### ", "## ##", "#### ", "## ##", "#### "],
-    'C': [" ####", "##   ", "##   ", "##   ", " ####"], 'D': ["###  ", "## ##", "## ##", "###  ", "###  "],
+    'C': [" ####", "##   ", "##   ", "##   ", " ####"], 'D': ["#### ", "## ##", "## ##", "## ##", "#### "],
     'E': ["#####", "##   ", "###  ", "##   ", "#####"], 'F': ["#####", "##   ", "###  ", "##   ", "##   "],
     'G': [" ####", "##   ", "## ##", "## ##", " ####"], 'H': ["## ##", "## ##", "#####", "## ##", "## ##"],
     'I': ["###", " # ", " # ", " # ", "###"], 'J': ["  ###", "   ##", "   ##", "## ##", " ### "],
@@ -246,6 +253,10 @@ def fetch_display_state(current_state):
 # =====================================================================
 def anim_available():
     try:
+        with open("anim.bin", "rb") as f:
+            head = f.read(10)
+        if len(head) >= 10 and head[0:4] == b"LDA1":
+            return (head[8] | (head[9] << 8)) > 0     # nframes > 0
         return os.stat("anim.bin")[6] >= FRAME_SIZE
     except OSError:
         return False
@@ -256,6 +267,60 @@ def free_bytes():
         return s[0] * s[3]
     except Exception:
         return -1
+
+def _validate_anim(path, written):
+    """Accept either the LDA1 palette format (size matches its own header) or
+    the legacy raw-RGB format (a clean multiple of FRAME_SIZE)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(10)
+        if len(head) >= 10 and head[0:4] == b"LDA1":
+            w = head[4]; h = head[5]
+            ncolors = head[6] | (head[7] << 8)
+            nframes = head[8] | (head[9] << 8)
+            expect = 10 + ncolors * 3 + nframes * w * h
+            return nframes > 0 and written == expect
+        return written > 0 and (written % FRAME_SIZE == 0)
+    except OSError:
+        return False
+
+def load_anim_meta():
+    """Read anim.bin's header (and palette, if indexed) into ANIM."""
+    ANIM["loaded"] = False
+    ANIM["pens"] = None
+    try:
+        with open("anim.bin", "rb") as f:
+            head = f.read(10)
+            if len(head) >= 10 and head[0:4] == b"LDA1":
+                w = head[4]; h = head[5]
+                ncolors = head[6] | (head[7] << 8)
+                nframes = head[8] | (head[9] << 8)
+                pal = f.read(ncolors * 3)
+                ANIM.update(indexed=True, w=w, h=h, ncolors=ncolors,
+                            nframes=nframes, offset=10 + ncolors * 3,
+                            fbytes=w * h, pal=pal, loaded=True)
+            else:
+                f.seek(0, 2)
+                size = f.tell()
+                ANIM.update(indexed=False, w=64, h=32, ncolors=0,
+                            nframes=size // FRAME_SIZE, offset=0,
+                            fbytes=FRAME_SIZE, pal=None, loaded=True)
+    except OSError:
+        ANIM["loaded"] = False
+    return ANIM["loaded"]
+
+def build_anim_pens():
+    """Precompute one pen per palette colour at the current brightness."""
+    if not (ANIM["loaded"] and ANIM["indexed"] and ANIM["pal"]):
+        ANIM["pens"] = None
+        return
+    lut = BRIGHTNESS_LUT
+    pal = ANIM["pal"]
+    cp = graphics.create_pen
+    pens = []
+    for i in range(ANIM["ncolors"]):
+        pens.append(cp(lut[pal[i * 3]], lut[pal[i * 3 + 1]], lut[pal[i * 3 + 2]]))
+    ANIM["pens"] = pens
 
 def fetch_animation():
     """Download the .bin, being careful with limited flash. Returns a short
@@ -302,13 +367,12 @@ def fetch_animation():
         finally:
             r.close()
 
-        valid = written > 0 and (written % FRAME_SIZE == 0)
-        if expected is not None:
-            valid = valid and (written == expected)
-        if valid:
+        size_ok = (expected is None) or (written == expected)
+        if size_ok and _validate_anim("anim.tmp", written):
             try: os.remove("anim.bin")
             except OSError: pass
             os.rename("anim.tmp", "anim.bin")
+            ANIM["loaded"] = False        # force header/palette reload
             print("Animation updated:", written, "bytes")
             return "OK"
         print("Bad anim download:", written, "bytes")
@@ -359,32 +423,49 @@ def draw_checklist(steps):
 
 def draw_animation(ref_ticks):
     global current_anim_frame
+    if not ANIM["loaded"]:
+        if not load_anim_meta():
+            screen.clear()
+            screen.text("NO ANIM", 16, 14, COL_RED, font=FONT_3X5)
+            return
+    nframes = ANIM["nframes"]
+    if nframes <= 0:
+        screen.clear()
+        return
+    frame_idx = (ref_ticks // 100) % nframes
+    if frame_idx == current_anim_frame:
+        return
+    current_anim_frame = frame_idx
+    fbytes = ANIM["fbytes"]
     try:
         with open("anim.bin", "rb") as f:
-            f.seek(0, 2)
-            file_size = f.tell()
-            if file_size < FRAME_SIZE:
-                return
-            num_frames = file_size // FRAME_SIZE
-            frame_idx = (ref_ticks // 100) % num_frames
-            if frame_idx == current_anim_frame:
-                return
-            current_anim_frame = frame_idx
-            f.seek(frame_idx * FRAME_SIZE)
-            frame_data = f.read(FRAME_SIZE)
-            set_pen = graphics.set_pen
-            create_pen = graphics.create_pen
-            pixel = graphics.pixel
-            lut = BRIGHTNESS_LUT
-            idx = 0
-            for y in range(32):
-                for x in range(64):
-                    set_pen(create_pen(lut[frame_data[idx]], lut[frame_data[idx + 1]], lut[frame_data[idx + 2]]))
-                    pixel(x, y)
-                    idx += 3
+            f.seek(ANIM["offset"] + frame_idx * fbytes)
+            data = f.read(fbytes)
     except OSError:
-        screen.clear()
-        screen.text("NO ANIM", 16, 14, COL_RED, font=FONT_3X5)
+        ANIM["loaded"] = False
+        return
+    set_pen = graphics.set_pen
+    pixel = graphics.pixel
+    w = ANIM["w"]; h = ANIM["h"]
+    if ANIM["indexed"]:
+        if ANIM["pens"] is None:
+            build_anim_pens()
+        pens = ANIM["pens"]
+        idx = 0
+        for y in range(h):
+            for x in range(w):
+                set_pen(pens[data[idx]])
+                pixel(x, y)
+                idx += 1
+    else:
+        create_pen = graphics.create_pen
+        lut = BRIGHTNESS_LUT
+        idx = 0
+        for y in range(h):
+            for x in range(w):
+                set_pen(create_pen(lut[data[idx]], lut[data[idx + 1]], lut[data[idx + 2]]))
+                pixel(x, y)
+                idx += 3
 
 # =====================================================================
 # --- RENDERERS ---
@@ -585,6 +666,7 @@ def main():
             CURRENT_BRIGHTNESS = state["brightness"]
             BRIGHTNESS_LUT = bytearray([int(i * CURRENT_BRIGHTNESS) for i in range(256)])
             screen.reset_pens()
+            ANIM["pens"] = None          # rebuild palette pens at new brightness
             current_anim_frame = -1
             last_brightness = state["brightness"]
 
@@ -632,3 +714,4 @@ def main():
 # No try/except here on purpose -- the bootloader handles crashes/rollback.
 if __name__ == "__main__":
     main()
+
