@@ -240,6 +240,8 @@ def fetch_display_state(current_state):
                 "reboot": data.get("reboot", False),
                 "epoch": data.get("epoch", 0),
                 "tz_offset": data.get("tz_offset", 0),
+                "paired": data.get("paired", True),
+                "pair_code": data.get("pair_code", ""),
             }
         else:
             print("Server status", r.status_code)
@@ -419,6 +421,38 @@ def draw_checklist(steps):
         graphics.rectangle(2, y + 1, 3, 3)
         screen.text(label, 9, y, txt, font=FONT_3X5)
         y += 9
+    i75.update()
+
+def draw_pair_screen(code):
+    screen.clear()
+    screen.text("PAIR CODE", 14, 2, COL_CYAN, font=FONT_3X5)
+    cw = len(code) * 6 - 1                         # FONT_BOLD_5X5 is 5 wide + 1 gap
+    x = max(0, (64 - cw) // 2)
+    screen.text(code, x, 11, COL_WHITE, font=FONT_BOLD_5X5)
+    screen.text("ENTER IN APP", 8, 25, COL_GREY, font=FONT_3X5)
+
+def draw_loading_grid(done_frac, phase):
+    """A mosaic of blocks that fills green as startup progresses. Unfilled
+    blocks shimmer with a moving diagonal so the screen stays alive while it
+    waits on the network."""
+    screen.clear()
+    cols, rows, cell, gap = 16, 8, 3, 1     # 16*4=64 wide, 8*4=32 tall
+    total = cols * rows
+    if done_frac < 0: done_frac = 0
+    if done_frac > 1: done_frac = 1
+    filled = int(done_frac * total + 0.0001)
+    i = 0
+    for ry in range(rows):
+        for cx in range(cols):
+            if i < filled:
+                col = COL_GREEN
+            elif i == filled:
+                col = COL_CYAN if (phase // 2) % 2 == 0 else (0, 170, 110)   # leading pulse
+            else:
+                col = (44, 60, 50) if ((cx + ry + phase) % 8) < 2 else (20, 24, 30)  # shimmer
+            graphics.set_pen(screen.create_pen(col))
+            graphics.rectangle(cx * (cell + gap), ry * (cell + gap), cell, cell)
+            i += 1
     i75.update()
 
 def draw_animation(ref_ticks):
@@ -604,25 +638,48 @@ def main():
              "trains": [], "weather": [], "message": "", "reboot": False,
              "epoch": 0, "tz_offset": 0}
 
-    # Boot checklist: each row ticks green as it completes.
-    steps = [["WIFI", "pending"], ["WEATHER", "pending"], ["TRAINS", "pending"]]
-    draw_checklist(steps)
+    # --- Filling-mosaic boot screen --------------------------------------
+    # Seven checks; the grid fills green as each is satisfied. It keeps
+    # animating and retrying on the network steps until the data is really
+    # there (with a cap so a down server can't trap us on the boot screen).
+    STEPS = 7
+    _phase = [0]
+    def grid(done_step):
+        _phase[0] += 1
+        draw_loading_grid(done_step / STEPS, _phase[0])
 
-    steps[0][1] = "active"; draw_checklist(steps)
-    wifi_ok = connect_wifi()
-    steps[0][1] = "done" if wifi_ok else "fail"; draw_checklist(steps)
-    time.sleep(0.3)
+    def hold(done_step, frames, delay):
+        for _ in range(frames):
+            grid(done_step)
+            time.sleep(delay)
 
-    # A single server poll returns both weather and trains; reveal them in turn.
-    steps[1][1] = "active"; draw_checklist(steps)
-    state = fetch_display_state(state)
-    steps[1][1] = "done" if state.get("weather") else "fail"; draw_checklist(steps)
-    time.sleep(0.4)
+    hold(1, 8, 0.03)                              # 1: BOOT (we're running, so done)
 
-    steps[2][1] = "active"; draw_checklist(steps)
-    time.sleep(0.3)
-    steps[2][1] = "done" if state.get("trains") else "fail"; draw_checklist(steps)
-    time.sleep(0.6)
+    while not check_wifi():                       # 2: WIFI — wait for it
+        grid(1); time.sleep(0.1)
+    hold(2, 6, 0.03)
+
+    attempts = 0                                  # 3-6: SERVER / WEATHER / TRAINS / TIME
+    while True:
+        state = fetch_display_state(state)
+        if not state.get("paired", True):         # unpaired -> stop here, show pair code
+            break
+        have_server = bool(state.get("epoch"))
+        have_weather = bool(state.get("weather"))
+        have_trains = bool(state.get("trains"))
+        if have_server and have_weather and have_trains:
+            break
+        attempts += 1
+        if attempts > 30:                         # ~ give up waiting (server down); proceed
+            break
+        # animate the leading edge around the "server" block while retrying
+        hold(3, 6, 0.12)
+    hold(3, 4, 0.03)                              # server responded
+    hold(4, 4, 0.04)                              # weather present
+    hold(5, 4, 0.04)                              # trains present
+    hold(6, 4, 0.04)                              # time/clock ready
+
+    hold(7, 12, 0.025)                            # 7: READY — fill the whole grid
 
     sync_tick = time.ticks_ms()
     last_poll = time.time()        # we already polled above; don't re-poll instantly
@@ -669,6 +726,13 @@ def main():
             ANIM["pens"] = None          # rebuild palette pens at new brightness
             current_anim_frame = -1
             last_brightness = state["brightness"]
+
+        # If this device isn't paired yet, show its pair code and nothing else.
+        if not state.get("paired", True):
+            draw_pair_screen(state.get("pair_code", ""))
+            i75.update()
+            time.sleep(0.1)
+            continue
 
         # Local clock, kept accurate from the server's time without needing NTP.
         if state["epoch"]:
