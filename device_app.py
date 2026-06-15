@@ -128,13 +128,55 @@ FONT_TALL_5X11 = {
 ICON_PALETTE = {
     ' ': (0, 0, 0), 'Y': (255, 240, 0), 'W': (255, 255, 255), 'G': (140, 140, 140), 'C': (0, 200, 255)
 }
-SUN_F1 = ["                ", "       YYYYYY    ", "     YYYYYYYYYY  ", "  YYYYYYYYYYYY  ", "  YYYYYYYYYYYY  ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", "  YYYYYYYYYYYY  ", "  YYYYYYYYYYYY  ", "     YYYYYYYYYY  ", "       YYYYYY    ", "                "]
-SUN_F2 = ["        YYYY     ", "     YYYYYYYYYY  ", "  YYYYYYYYYYYY  ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", "YYYYYYYYYYYYYYYY", "YYYYYYYYYYYYYYYY", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", " YYYYYYYYYYYYYY ", "  YYYYYYYYYYYY  ", "     YYYYYYYYYY  ", "        YYYY     "]
-CLOUD_F1 = ["                ", "                ", "       WWWWWW    ", "     WWWWWWWWWW  ", " WWWWWWWWWWWWWW ", "WWWWWWWWWWWWWWWW", "WWWWWWWWWWWWWWWW", "WWWWWWWWWWWWWWWW", " WWWWWWWWWWWWWW ", "                ", "                ", "                ", "                ", "                "]
-CLOUD_F2 = ["                ", "       WWWWWW    ", "     WWWWWWWWWW  ", " WWWWWWWWWWWWWW ", "WWWWWWWWWWWWWWWW", "WWWWWWWWWWWWWWWW", "WWWWWWWWWWWWWWWW", " WWWWWWWWWWWWWW ", "                ", "                ", "                ", "                ", "                ", "                "]
-RAIN_F1 = ["                ", "       WWWWWW    ", "     WWWWWWWWWW  ", " WWWWWWWWWWWWWW ", " GGGGGGGGGGGGGG ", " GGGGGGGGGGGGGG ", "                ", "  CC   CC   CC  ", "  CC   CC   CC  ", "                ", "    CC   CC     ", "    CC   CC     ", "                ", "                "]
-RAIN_F2 = ["                ", "       WWWWWW    ", "     WWWWWWWWWW  ", " WWWWWWWWWWWWWW ", " GGGGGGGGGGGGGG ", " GGGGGGGGGGGGGG ", "                ", "    CC   CC     ", "    CC   CC     ", "                ", "  CC   CC   CC  ", "  CC   CC   CC  ", "                ", "                "]
-WEATHER_MAP = {'clear': (SUN_F1, SUN_F2), 'clouds': (CLOUD_F1, CLOUD_F2), 'rain': (RAIN_F1, RAIN_F2)}
+
+# 13x11 pixel icons traced from the reference image.
+ICON_SUN = [
+    "    Y   Y    ","  Y  YYY  Y  ","    YYYYY    ",
+    " Y YYYYYYY Y ","   YYYYYYY   ","   YYYYYYY   ",
+    " Y YYYYYYY Y ","    YYYYY    ","  Y  YYY  Y  ",
+    "    Y   Y    ","             ",
+]
+ICON_PARTLY = [
+    "       YYY   ","     YYYYYYY ","    YYYYYY   ",
+    "  WWYYYYYYY  "," WWWWWYYYYY  "," WWWWWWWWWW  ",
+    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
+    "             ","             ",
+]
+ICON_CLOUDY = [
+    "             ","   WWWW      ","  WWWWWWW    ",
+    " WWWWWWWWWW  ","WWWWWWWWWWWW ","WWWWWWWWWWWW ",
+    "WWWWWWWWWWWW "," WWWWWWWWWW  ","  GGGGGGGG   ",
+    "             ","             ",
+]
+ICON_RAIN = [
+    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
+    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
+    " C  C  C  C  ","  C  C  C    "," C  C  C  C  ",
+    "  C  C  C    ","             ",
+]
+ICON_THUNDER = [
+    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
+    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
+    "    YYYY     ","   YYYYYY    ","    YYYY     ",
+    "C     YY   C ","      Y      ",
+]
+ICON_SNOW = [
+    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
+    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
+    " W G W G W   ","WGWGWGWGWGW  "," W G W G W   ",
+    "   G   G     ","             ",
+]
+
+# Map OWM condition strings to icons.
+WEATHER_ICONS = {
+    'clear':       ICON_SUN,
+    'clouds':      ICON_CLOUDY,
+    'partly':      ICON_PARTLY,
+    'rain':        ICON_RAIN,
+    'drizzle':     ICON_RAIN,
+    'thunderstorm':ICON_THUNDER,
+    'snow':        ICON_SNOW,
+}
 
 # =====================================================================
 # --- GRAPHICS ENGINE ---
@@ -545,29 +587,37 @@ def draw_train_dashboard(dashboard_data, ref_time):
             graphics.set_pen(screen.create_pen(COL_GREY))
             graphics.line(0, y + 10, 64, y + 10)
 
-def draw_weather_3col(data, ref_ticks):
+def draw_weather_4col(data, ref_ticks):
     screen.clear()
     if not data:
         screen.text("WEATHER...", 5, 12, COL_WHITE, font=FONT_3X5)
         return
-    graphics.set_pen(screen.create_pen(COL_GREY))
-    graphics.line(21, 0, 21, 32)
-    graphics.line(43, 0, 43, 32)
-    col_starts = [1, 22, 44]
-    anim_frame = (ref_ticks // 400) % 2
+    # 4 columns of 16px each; dividers at 16, 32, 48.
+    divider_col = (55, 55, 55)
+    for x in (16, 32, 48):
+        graphics.set_pen(screen.create_pen(divider_col))
+        graphics.line(x, 0, x, 32)
     for i, day in enumerate(data):
-        if i > 2: break
-        x_base = col_starts[i]
-        frames = WEATHER_MAP.get(day['icon_name'], WEATHER_MAP['clouds'])
-        screen.draw_pixel_icon(frames[anim_frame], x_base + 2, 1)
-        text_w = len(day['day']) * 4 - 1
-        text_x = x_base + (21 - text_w) // 2
-        screen.text(day['day'], text_x, 18, COL_CYAN, font=FONT_3X5)
-        high_str, low_str = str(day['high']), str(day['low'])
-        total_w = (len(low_str) * 4 - 1) + 2 + (len(high_str) * 4 - 1)
-        start_x = x_base + (21 - total_w) // 2
-        screen.text(low_str, start_x, 25, COL_BLUE, font=FONT_3X5)
-        screen.text(high_str, start_x + (len(low_str) * 4 - 1) + 2, 25, COL_RED, font=FONT_3X5)
+        if i > 3: break
+        col_x = i * 16
+        # Icon: 13 wide x 11 tall, 1px margin top-left.
+        icon = WEATHER_ICONS.get(day['icon_name'], ICON_CLOUDY)
+        for ry, row in enumerate(icon):
+            for rx, ch in enumerate(row):
+                if ch != ' ':
+                    c = ICON_PALETTE.get(ch, COL_WHITE)
+                    screen.pixel(col_x + 1 + rx, 1 + ry, c)
+        # Day label: today = TDY, everything else = actual day shorthand.
+        lbl = day['day']
+        lw = len(lbl) * 4 - 1
+        lx = col_x + (16 - lw) // 2
+        screen.text(lbl, lx, 13, COL_CYAN, font=FONT_3X5)
+        # Temps: low (blue) / high (red), centred together.
+        lo = str(day['low']); hi = str(day['high'])
+        tw = (len(lo) * 4 - 1) + 2 + (len(hi) * 4 - 1)
+        tx = col_x + (16 - tw) // 2
+        screen.text(lo, tx, 20, COL_BLUE, font=FONT_3X5)
+        screen.text(hi, tx + (len(lo) * 4 - 1) + 2, 20, COL_RED, font=FONT_3X5)
 
 def get_word_width(word):
     w = 0
@@ -765,7 +815,7 @@ def main():
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
-        elif mode == "WEATHER": draw_weather_3col(state["weather"], now_ticks)
+        elif mode == "WEATHER": draw_weather_4col(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
         elif mode == "ANIM":    draw_animation(now_ticks)
         elif mode == "CLOCK":   draw_clock(local_struct)
