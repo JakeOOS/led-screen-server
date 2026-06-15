@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "10"        # bumped: device gains a pairing screen
+FIRMWARE_VERSION = "12"       # 4-col weather, new icons, day labels
 
 OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
@@ -259,7 +259,7 @@ def get_weather():
                 else:
                     d["icons"].append("clouds")
         out = []
-        for i in range(min(3, len(order))):
+        for i in range(min(4, len(order))):
             dd = days[order[i]]
             high, low = round(max(dd["temps"])), round(min(dd["temps"]))
             icons = dd["icons"] or ["clouds"]
@@ -268,8 +268,11 @@ def get_weather():
             else:
                 non_rain = [c for c in icons if c != "rain"] or icons
                 mapped = max(set(non_rain), key=non_rain.count)
-            label = "TDY" if i == 0 else ("TMR" if i == 1 else
-                     ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][datetime.strptime(order[i], "%Y-%m-%d").weekday()])
+            if i == 0:
+                label = "TDY"
+            else:
+                wd = datetime.strptime(order[i], "%Y-%m-%d").weekday()
+                label = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][wd]
             out.append({"day": label, "high": high, "low": low, "icon_name": mapped})
         _weather_cache["data"] = out
         _weather_cache["ts"] = now
