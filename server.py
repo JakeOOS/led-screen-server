@@ -1,18 +1,23 @@
 """
-LED screen control server (LIVE DATA + OTA + SCHEDULE + PERSISTENT CONFIG).
+LED screen control server — with Supabase Auth.
 
-Per-device config (train boards + schedule + messages) is stored in Supabase so
-it SURVIVES restarts. The device API shape is unchanged, so no device update is
-needed for this step. Pairing is added in a later step on top of this.
+Security model:
+  - Device polling (/api/device/.../display) uses a shared DEVICE_SECRET header.
+    Devices are not people; they don't log in. A single shared secret is enough
+    for now (can be per-device keys later).
+  - All user-facing routes (/api/user/...) require a valid Supabase JWT in the
+    Authorization: Bearer header. The server verifies this with Supabase's
+    /auth/v1/user endpoint and enforces device ownership.
+  - Pairing links a device to the authenticated user's account.
+  - The service_role key is only used for internal device display polling
+    (where the device itself is making the request, not a user).
 
-Required environment variables (set in Render):
-  OWM_API_KEY    OpenWeather key
-  RDM_API_KEY    Rail Data Marketplace key
-  SUPABASE_URL   e.g. https://abcd1234.supabase.co
-  SUPABASE_KEY   the service_role key (Project Settings -> API)
-
-If SUPABASE_URL/KEY are absent, the server falls back to in-memory storage with
-default config, so it still runs (just without persistence).
+Environment variables required (set in Render):
+  OWM_API_KEY        OpenWeather key
+  RDM_API_KEY        Rail Data Marketplace key
+  SUPABASE_URL       e.g. https://abcd1234.supabase.co
+  SUPABASE_KEY       service_role key (Project Settings -> API)
+  DEVICE_SECRET      any long random string you choose; flash it into main.py
 """
 
 import os
@@ -20,30 +25,34 @@ import time
 import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Optional, List
+from typing import Optional
 
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "12"       # 4-col weather, new icons, day labels
+FIRMWARE_VERSION = "12"
 
-OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
-RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+OWM_API_KEY    = os.environ.get("OWM_API_KEY", "")
+RDM_API_KEY    = os.environ.get("RDM_API_KEY", "")
+SUPABASE_URL   = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY   = os.environ.get("SUPABASE_KEY", "")
+DEVICE_SECRET  = os.environ.get("DEVICE_SECRET", "")   # shared secret for device polling
 
 OWM_LAT = "51.5074"
 OWM_LON = "-0.1278"
 RDM_URL_BASE = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 UK_TZ = ZoneInfo("Europe/London")
-RDM_HEADERS = {"x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+RDM_HEADERS = {
+    "x-apikey": RDM_API_KEY,
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+}
 MESSAGE_TTL = 3600
 
-# --- Defaults for a brand-new device (your current Tulse Hill setup) --------
 DEFAULT_BOARDS = [
     {"badge": "TLK", "badge_col": [150, 0, 0],  "station": "TUH",
      "match": ["St Albans", "Luton", "Bedford", "Farringdon", "Elephant & Castle"]},
@@ -52,8 +61,6 @@ DEFAULT_BOARDS = [
     {"badge": "VIC", "badge_col": [0, 150, 200], "station": "WDU",
      "match": ["Victoria"]},
 ]
-# Schedule = list of bands. The band whose 'start' hour is the latest one <= now
-# (London time) is active. brightness 0..1, modes is which screens may show.
 DEFAULT_SCHEDULE = [
     {"start": 5,  "brightness": 1.0, "modes": ["TRAINS", "WEATHER", "PHONE"]},
     {"start": 12, "brightness": 0.5, "modes": ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]},
@@ -62,65 +69,137 @@ DEFAULT_SCHEDULE = [
 ]
 
 # =====================================================================
-# --- Persistence layer (Supabase REST, with in-memory fallback) ---
+# --- Auth helpers ---
 # =====================================================================
-SB_DEVICES = (SUPABASE_URL + "/rest/v1/devices") if SUPABASE_URL else ""
-SB_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY,
-              "Content-Type": "application/json"}
-_MEM = {}   # fallback store when Supabase isn't configured
+SB_AUTH  = (SUPABASE_URL + "/auth/v1") if SUPABASE_URL else ""
+SB_REST  = (SUPABASE_URL + "/rest/v1") if SUPABASE_URL else ""
+SB_HEADERS_ADMIN = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Content-Type": "application/json",
+}
+_MEM = {}   # in-memory fallback when Supabase not configured
 
 
+def verify_token(authorization: str) -> dict:
+    """Verify a user's Bearer token with Supabase and return the user dict.
+    Raises HTTPException 401 on failure."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
+    token = authorization[7:]
+    if not SB_AUTH:
+        # Dev fallback: accept any token, return fake user
+        return {"id": "dev-user", "email": "dev@local"}
+    try:
+        r = requests.get(SB_AUTH + "/user",
+                         headers={"Authorization": "Bearer " + token,
+                                  "apikey": SUPABASE_KEY}, timeout=8)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print("Auth verify error:", e)
+    raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def verify_device_secret(x_device_secret: str):
+    """Devices send a shared secret header instead of a user JWT."""
+    if DEVICE_SECRET and x_device_secret != DEVICE_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid device secret")
+
+
+# =====================================================================
+# --- Supabase device store ---
+# =====================================================================
 def _gen_code():
     return "".join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
 
 
 def _new_device(device_id):
-    return {"device_id": device_id, "name": "", "paired": False, "pair_code": _gen_code(),
-            "config": {"boards": DEFAULT_BOARDS, "schedule": DEFAULT_SCHEDULE},
-            "message": "", "message_ts": 0, "reboot": False, "last_seen": int(time.time())}
+    return {
+        "device_id": device_id, "name": "", "paired": False,
+        "owner_id": None, "pair_code": _gen_code(),
+        "config": {"boards": DEFAULT_BOARDS, "schedule": DEFAULT_SCHEDULE},
+        "message": "", "message_ts": 0, "reboot": False,
+        "last_seen": int(time.time()),
+    }
+
+
+def _sb(path):
+    return SB_REST + path
 
 
 def get_device(device_id):
-    """Fetch a device row, creating it with defaults if it doesn't exist yet."""
-    if not SB_DEVICES:
+    if not SB_REST:
         if device_id not in _MEM:
             _MEM[device_id] = _new_device(device_id)
         return _MEM[device_id]
     try:
-        r = requests.get(SB_DEVICES + "?device_id=eq." + device_id + "&select=*",
-                         headers=SB_HEADERS, timeout=8)
-        if r.status_code == 200:
-            rows = r.json()
-            if rows:
-                return rows[0]
+        r = requests.get(_sb("/devices?device_id=eq." + device_id + "&select=*"),
+                         headers=SB_HEADERS_ADMIN, timeout=8)
+        if r.status_code == 200 and r.json():
+            return r.json()[0]
     except Exception as e:
         print("Supabase get error:", e)
-        return _new_device(device_id)      # transient: serve defaults, don't crash
-    # not found -> create it
+        return _new_device(device_id)
+    # Create with defaults
     row = _new_device(device_id)
     try:
-        h = dict(SB_HEADERS); h["Prefer"] = "resolution=merge-duplicates,return=representation"
-        r = requests.post(SB_DEVICES, headers=h, json=row, timeout=8)
-        if r.status_code in (200, 201):
-            d = r.json()
-            return d[0] if d else row
+        h = dict(SB_HEADERS_ADMIN)
+        h["Prefer"] = "resolution=merge-duplicates,return=representation"
+        r = requests.post(_sb("/devices"), headers=h, json=row, timeout=8)
+        if r.status_code in (200, 201) and r.json():
+            return r.json()[0]
     except Exception as e:
         print("Supabase create error:", e)
     return row
 
 
 def save_device(device_id, fields):
-    """Persist a partial update (dict of column -> value)."""
-    if not SB_DEVICES:
+    if not SB_REST:
         if device_id in _MEM:
             _MEM[device_id].update(fields)
         return
     try:
-        h = dict(SB_HEADERS); h["Prefer"] = "return=minimal"
-        requests.patch(SB_DEVICES + "?device_id=eq." + device_id,
+        h = dict(SB_HEADERS_ADMIN); h["Prefer"] = "return=minimal"
+        requests.patch(_sb("/devices?device_id=eq." + device_id),
                        headers=h, json=fields, timeout=8)
     except Exception as e:
         print("Supabase save error:", e)
+
+
+def find_device_by_code(code):
+    code = (code or "").strip().upper()
+    if not code:
+        return None
+    if not SB_REST:
+        for d in _MEM.values():
+            if d.get("pair_code", "").upper() == code and not d.get("paired"):
+                return d
+        return None
+    try:
+        r = requests.get(
+            _sb("/devices?pair_code=ilike." + code + "&paired=eq.false&select=*"),
+            headers=SB_HEADERS_ADMIN, timeout=8)
+        if r.status_code == 200 and r.json():
+            return r.json()[0]
+    except Exception as e:
+        print("Supabase find error:", e)
+    return None
+
+
+def get_user_devices(owner_id):
+    """Return all devices belonging to this user."""
+    if not SB_REST:
+        return [d for d in _MEM.values() if d.get("owner_id") == owner_id]
+    try:
+        r = requests.get(
+            _sb("/devices?owner_id=eq." + owner_id + "&select=*"),
+            headers=SB_HEADERS_ADMIN, timeout=8)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print("Supabase list error:", e)
+    return []
 
 
 def current_message(dev):
@@ -138,7 +217,7 @@ def schedule_for(dev):
         s = band.get("start", 0)
         if s <= h and (best is None or s > best.get("start", -1)):
             best = band
-    if best is None:                       # before the earliest band -> wrap to latest
+    if best is None:
         best = max(sched, key=lambda b: b.get("start", 0))
     return best.get("brightness", 0.5), best.get("modes", ["TRAINS", "WEATHER"])
 
@@ -149,7 +228,7 @@ def uk_tz_offset_seconds():
 
 
 # =====================================================================
-# --- TRAINS ---
+# --- Trains ---
 # =====================================================================
 _station_cache = {}
 STATION_TTL = 60
@@ -225,7 +304,7 @@ def get_trains(boards):
 
 
 # =====================================================================
-# --- WEATHER (shared; per-device location is a later step) ---
+# --- Weather ---
 # =====================================================================
 _weather_cache = {"ts": 0, "data": []}
 WEATHER_TTL = 1800
@@ -256,6 +335,10 @@ def get_weather():
                     d["icons"].append("rain")
                 elif "clear" in cond:
                     d["icons"].append("clear")
+                elif "snow" in cond:
+                    d["icons"].append("snow")
+                elif "thunder" in cond:
+                    d["icons"].append("thunderstorm")
                 else:
                     d["icons"].append("clouds")
         out = []
@@ -272,7 +355,7 @@ def get_weather():
                 label = "TDY"
             else:
                 wd = datetime.strptime(order[i], "%Y-%m-%d").weekday()
-                label = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][wd]
+                label = ["MON","TUE","WED","THU","FRI","SAT","SUN"][wd]
             out.append({"day": label, "high": high, "low": low, "icon_name": mapped})
         _weather_cache["data"] = out
         _weather_cache["ts"] = now
@@ -283,15 +366,16 @@ def get_weather():
 
 
 # =====================================================================
-# --- Device endpoints ---
+# --- Device polling endpoint (uses device secret, NOT user JWT) ---
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
-def get_display(device_id: str):
+def get_display(device_id: str, x_device_secret: str = Header(default="")):
+    verify_device_secret(x_device_secret)
     dev = get_device(device_id)
     reboot = bool(dev.get("reboot"))
     fields = {"last_seen": int(time.time())}
     if reboot:
-        fields["reboot"] = False         # one-shot
+        fields["reboot"] = False
     save_device(device_id, fields)
     if not dev.get("paired", False):
         return {
@@ -303,7 +387,6 @@ def get_display(device_id: str):
             "reboot": reboot,
             "epoch": int(time.time()),
             "tz_offset": uk_tz_offset_seconds(),
-            "server_time": int(time.time()),
         }
     bright, allowed = schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
@@ -317,39 +400,22 @@ def get_display(device_id: str):
         "reboot": reboot,
         "epoch": int(time.time()),
         "tz_offset": uk_tz_offset_seconds(),
-        "server_time": int(time.time()),
     }
 
 
-class ConfigUpdate(BaseModel):
-    message: Optional[str] = None
-    reboot: Optional[bool] = None
-    name: Optional[str] = None
-    boards: Optional[list] = None
-    schedule: Optional[list] = None
-
-
-@app.post("/api/device/{device_id}/config")
-def update_config(device_id: str, update: ConfigUpdate):
-    dev = get_device(device_id)
-    fields = {}
-    if update.message is not None:
-        fields["message"] = update.message
-        fields["message_ts"] = int(time.time())
-    if update.reboot is not None:
-        fields["reboot"] = update.reboot
-    if update.name is not None:
-        fields["name"] = update.name
-    if update.boards is not None or update.schedule is not None:
-        cfg = dev.get("config") or {}
-        if update.boards is not None:
-            cfg["boards"] = update.boards
-        if update.schedule is not None:
-            cfg["schedule"] = update.schedule
-        fields["config"] = cfg
-    if fields:
-        save_device(device_id, fields)
-    return {"ok": True, "device_id": device_id}
+# =====================================================================
+# --- User API (all require valid Supabase JWT) ---
+# =====================================================================
+@app.get("/api/user/me")
+def get_me(authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    devices = get_user_devices(user["id"])
+    return {
+        "id": user["id"],
+        "email": user.get("email"),
+        "devices": [{"device_id": d["device_id"], "name": d.get("name", ""),
+                     "last_seen": d.get("last_seen", 0)} for d in devices],
+    }
 
 
 class PairBody(BaseModel):
@@ -357,42 +423,58 @@ class PairBody(BaseModel):
     name: Optional[str] = None
 
 
-def find_device_by_code(code):
-    code = (code or "").strip().upper()
-    if not code:
-        return None
-    if not SB_DEVICES:
-        for d in _MEM.values():
-            if d.get("pair_code", "").upper() == code and not d.get("paired"):
-                return d
-        return None
-    try:
-        # ilike = case-insensitive match in Supabase/PostgREST
-        r = requests.get(
-            SB_DEVICES + "?pair_code=ilike." + code + "&paired=eq.false&select=*",
-            headers=SB_HEADERS, timeout=8)
-        if r.status_code == 200:
-            rows = r.json()
-            return rows[0] if rows else None
-    except Exception as e:
-        print("Supabase find error:", e)
-    return None
-
-
-@app.post("/api/pair")
-def pair_device(body: PairBody):
+@app.post("/api/user/pair")
+def pair_device(body: PairBody, authorization: str = Header(default="")):
+    user = verify_token(authorization)
     dev = find_device_by_code(body.code)
     if not dev:
-        return {"ok": False, "error": "Invalid or already-used code"}
-    fields = {"paired": True}
-    if body.name:
+        raise HTTPException(status_code=404, detail="Invalid or already-used code")
+    save_device(dev["device_id"], {
+        "paired": True,
+        "owner_id": user["id"],
+        "name": body.name or "",
+    })
+    return {"ok": True, "device_id": dev["device_id"],
+            "name": body.name or ""}
+
+
+class DeviceUpdate(BaseModel):
+    message:  Optional[str]  = None
+    reboot:   Optional[bool] = None
+    name:     Optional[str]  = None
+    boards:   Optional[list] = None
+    schedule: Optional[list] = None
+
+
+@app.post("/api/user/device/{device_id}")
+def update_device(device_id: str, body: DeviceUpdate,
+                  authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    dev = get_device(device_id)
+    if dev.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your device")
+    fields = {}
+    if body.message is not None:
+        fields["message"] = body.message
+        fields["message_ts"] = int(time.time())
+    if body.reboot is not None:
+        fields["reboot"] = body.reboot
+    if body.name is not None:
         fields["name"] = body.name
-    save_device(dev["device_id"], fields)
-    return {"ok": True, "device_id": dev["device_id"], "name": body.name or dev.get("name", "")}
+    if body.boards is not None or body.schedule is not None:
+        cfg = dev.get("config") or {}
+        if body.boards is not None:
+            cfg["boards"] = body.boards
+        if body.schedule is not None:
+            cfg["schedule"] = body.schedule
+        fields["config"] = cfg
+    if fields:
+        save_device(device_id, fields)
+    return {"ok": True}
 
 
 # =====================================================================
-# --- Firmware (OTA) + control page ---
+# --- Firmware + phone page ---
 # =====================================================================
 @app.get("/firmware/version")
 def firmware_version():
@@ -401,8 +483,9 @@ def firmware_version():
 
 @app.get("/firmware/app")
 def firmware_app():
+    here = os.path.dirname(os.path.abspath(__file__))
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "device_app.py")) as f:
+        with open(os.path.join(here, "device_app.py")) as f:
             return PlainTextResponse(f.read())
     except OSError:
         return PlainTextResponse("# device_app.py not found", status_code=404)
@@ -420,10 +503,12 @@ def control_panel():
 
 @app.get("/")
 def root():
-    return {"status": "ok",
-            "firmware_version": FIRMWARE_VERSION,
-            "rdm_key_set": bool(RDM_API_KEY),
-            "owm_key_set": bool(OWM_API_KEY),
-            "persistence": "supabase" if SB_DEVICES else "in-memory (NOT persistent)",
-            "devices_in_memory": list(_MEM.keys())}
+    return {
+        "status": "ok",
+        "firmware_version": FIRMWARE_VERSION,
+        "rdm_key_set": bool(RDM_API_KEY),
+        "owm_key_set": bool(OWM_API_KEY),
+        "persistence": "supabase" if SB_REST else "in-memory",
+        "device_secret_set": bool(DEVICE_SECRET),
+    }
 
