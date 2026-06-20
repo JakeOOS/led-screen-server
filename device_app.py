@@ -18,7 +18,7 @@ import machine
 import gc
 import os
 
-DEVICE_SECRET = ""    # set this to match your DEVICE_SECRET env var on Render
+DEVICE_SECRET = "***REMOVED-DEVICE-SECRET***"    # must match DEVICE_SECRET in Render
 
 # --- CONFIG ---
 WIFI_SSID = "***REMOVED-WIFI-SSID***"
