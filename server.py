@@ -28,13 +28,13 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 
 import requests
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "14"
+FIRMWARE_VERSION = "15"
 
 OWM_API_KEY    = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY    = os.environ.get("RDM_API_KEY", "")
@@ -101,10 +101,18 @@ def verify_token(authorization: str) -> dict:
     raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-def verify_device_secret(x_device_secret: str):
+def verify_device_secret(incoming):
     """Devices send a shared secret header instead of a user JWT."""
-    if DEVICE_SECRET and x_device_secret != DEVICE_SECRET:
-        raise HTTPException(status_code=401, detail="Invalid device secret")
+    if DEVICE_SECRET and incoming != DEVICE_SECRET:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "bad device secret",
+                "got_length": len(incoming or ""),
+                "expected_length": len(DEVICE_SECRET),
+                "match": incoming == DEVICE_SECRET,
+            },
+        )
 
 
 # =====================================================================
@@ -369,8 +377,11 @@ def get_weather():
 # --- Device polling endpoint (uses device secret, NOT user JWT) ---
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
-def get_display(device_id: str, x_device_secret: str = Header(default="", alias="x-device-secret")):
-    verify_device_secret(x_device_secret)
+def get_display(device_id: str, request: Request):
+    # Read the header directly from the raw request to avoid any ambiguity
+    # in FastAPI's parameter-name-to-header-name auto-conversion.
+    incoming_secret = request.headers.get("x-device-secret", "")
+    verify_device_secret(incoming_secret)
     dev = get_device(device_id)
     reboot = bool(dev.get("reboot"))
     fields = {"last_seen": int(time.time())}
