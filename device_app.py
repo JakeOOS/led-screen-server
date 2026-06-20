@@ -18,7 +18,7 @@ import machine
 import gc
 import os
 
-DEVICE_SECRET = ""    # set this to match your DEVICE_SECRET env var on Render
+DEVICE_SECRET = "tulsehill-screen-2026-x7k2m9"    # must match DEVICE_SECRET in Render
 
 # --- CONFIG ---
 WIFI_SSID = "SKYWI5D4"
