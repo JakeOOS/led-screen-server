@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "13"
+FIRMWARE_VERSION = "14"
 
 OWM_API_KEY    = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY    = os.environ.get("RDM_API_KEY", "")
@@ -369,7 +369,7 @@ def get_weather():
 # --- Device polling endpoint (uses device secret, NOT user JWT) ---
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
-def get_display(device_id: str, x_device_secret: str = Header(default="")):
+def get_display(device_id: str, x_device_secret: str = Header(default="", alias="x-device-secret")):
     verify_device_secret(x_device_secret)
     dev = get_device(device_id)
     reboot = bool(dev.get("reboot"))
