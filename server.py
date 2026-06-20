@@ -403,6 +403,29 @@ def get_display(device_id: str, x_device_secret: str = Header(default="")):
     }
 
 
+@app.get("/api/user/device/{device_id}/display")
+def get_display_for_user(device_id: str, authorization: str = Header(default="")):
+    """Same data as the device endpoint, but authenticated as a user (JWT)
+    and scoped to devices that user owns. The phone app calls THIS, never
+    the device's secret-protected endpoint."""
+    user = verify_token(authorization)
+    dev = get_device(device_id)
+    if dev.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your device")
+    if not dev.get("paired", False):
+        return {"paired": False, "pair_code": dev.get("pair_code", "")}
+    bright, allowed = schedule_for(dev)
+    boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
+    return {
+        "paired": True,
+        "brightness": bright,
+        "allowed_modes": allowed,
+        "trains": get_trains(boards),
+        "weather": get_weather(),
+        "message": current_message(dev),
+    }
+
+
 # =====================================================================
 # --- User API (all require valid Supabase JWT) ---
 # =====================================================================
