@@ -18,6 +18,8 @@ import machine
 import gc
 import os
 
+DEVICE_SECRET = ""    # set this to match your DEVICE_SECRET env var on Render
+
 # --- CONFIG ---
 WIFI_SSID = "SKYWI5D4"
 WIFI_PASSWORD = "Jx14ShNK5u3YPH"
@@ -265,7 +267,10 @@ def fetch_display_state(current_state):
     try:
         gc.collect()
         url = SERVER_URL + "/api/device/" + DEVICE_ID + "/display"
-        r = urequests.get(url, timeout=10)
+        headers = {}
+        if DEVICE_SECRET:
+            headers["x-device-secret"] = DEVICE_SECRET
+        r = urequests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
             data = r.json()
             r.close()
