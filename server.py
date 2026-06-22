@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "15"
+FIRMWARE_VERSION = "17"
 
 OWM_API_KEY    = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY    = os.environ.get("RDM_API_KEY", "")
@@ -350,7 +350,7 @@ def get_weather():
                 else:
                     d["icons"].append("clouds")
         out = []
-        for i in range(min(4, len(order))):
+        for i in range(min(3, len(order))):
             dd = days[order[i]]
             high, low = round(max(dd["temps"])), round(min(dd["temps"]))
             icons = dd["icons"] or ["clouds"]
