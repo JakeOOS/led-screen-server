@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "17"
+FIRMWARE_VERSION = "18"
 
 OWM_API_KEY    = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY    = os.environ.get("RDM_API_KEY", "")
@@ -480,6 +480,19 @@ class DeviceUpdate(BaseModel):
     schedule: Optional[list] = None
 
 
+@app.get("/api/user/device/{device_id}/config")
+def get_device_config(device_id: str, authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    dev = get_device(device_id)
+    if dev.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your device")
+    cfg = dev.get("config") or {}
+    return {
+        "boards":   cfg.get("boards",   DEFAULT_BOARDS),
+        "schedule": cfg.get("schedule", DEFAULT_SCHEDULE),
+    }
+
+
 @app.post("/api/user/device/{device_id}")
 def update_device(device_id: str, body: DeviceUpdate,
                   authorization: str = Header(default="")):
@@ -505,6 +518,44 @@ def update_device(device_id: str, body: DeviceUpdate,
     if fields:
         save_device(device_id, fields)
     return {"ok": True}
+
+
+# =====================================================================
+# --- Station search ---
+# =====================================================================
+_stations = []   # loaded lazily on first search
+
+def _load_stations():
+    global _stations
+    if _stations:
+        return
+    try:
+        r = requests.get(
+            "https://raw.githubusercontent.com/davwheat/uk-railway-stations/main/stations.json",
+            timeout=10)
+        if r.status_code == 200:
+            raw = r.json()
+            _stations = sorted(
+                [{"n": s["stationName"], "c": s["crsCode"]}
+                 for s in raw if s.get("crsCode")],
+                key=lambda x: x["n"])
+            print(f"Loaded {len(_stations)} stations")
+    except Exception as e:
+        print("Station load error:", e)
+
+
+@app.get("/api/stations")
+def search_stations(q: str = ""):
+    """Return up to 10 stations matching the query string (name prefix/contains)."""
+    _load_stations()
+    q = q.strip().lower()
+    if not q or len(q) < 2:
+        return []
+    matches = [s for s in _stations if q in s["n"].lower()]
+    # Prioritise prefix matches
+    prefix = [s for s in matches if s["n"].lower().startswith(q)]
+    rest   = [s for s in matches if not s["n"].lower().startswith(q)]
+    return (prefix + rest)[:10]
 
 
 # =====================================================================
