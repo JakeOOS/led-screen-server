@@ -478,28 +478,61 @@ def draw_pair_screen(code):
     screen.text(code, x, 11, COL_WHITE, font=FONT_BOLD_5X5)
     screen.text("ENTER IN APP", 8, 25, COL_GREY, font=FONT_3X5)
 
-def draw_loading_grid(done_frac, phase):
-    """A mosaic of blocks that fills green as startup progresses. Unfilled
-    blocks shimmer with a moving diagonal so the screen stays alive while it
-    waits on the network."""
+def draw_voxel_loader(lit, failed_indices=None):
+    """Draw VOXEL centred on screen.
+    V = internal boot   O = server   X = firmware OK   E = APIs   L = ready
+    lit          = how many letters are solidly lit (0-5)
+    failed_indices = set/list of letter indices that failed (shown red)"""
+    WORD = "VOXEL"
+    COLOURS = [
+        (255,  80,  80),   # V - coral
+        (255, 180,   0),   # O - amber
+        ( 80, 255,  80),   # X - green
+        (  0, 200, 255),   # E - cyan
+        (180,  80, 255),   # L - purple
+    ]
+    GREY = (55, 55, 55)
+    RED  = (200, 50, 50)
+    FONT5 = {
+        'V': ["## ##", "## ##", "## ##", " ### ", "  #  "],
+        'O': [" ### ", "## ##", "## ##", "## ##", " ### "],
+        'X': ["## ##", " ### ", " ### ", " ### ", "## ##"],
+        'E': ["#####", "##   ", "###  ", "##   ", "#####"],
+        'L': ["##   ", "##   ", "##   ", "##   ", "#####"],
+    }
+    if failed_indices is None:
+        failed_indices = set()
+    total_w = sum(len(FONT5[c][0]) + 1 for c in WORD) - 1
+    x = (64 - total_w) // 2
+    y = (32 - 5) // 2
     screen.clear()
-    cols, rows, cell, gap = 16, 8, 3, 1     # 16*4=64 wide, 8*4=32 tall
-    total = cols * rows
-    if done_frac < 0: done_frac = 0
-    if done_frac > 1: done_frac = 1
-    filled = int(done_frac * total + 0.0001)
-    i = 0
-    for ry in range(rows):
-        for cx in range(cols):
-            if i < filled:
-                col = COL_GREEN
-            elif i == filled:
-                col = COL_CYAN if (phase // 2) % 2 == 0 else (0, 170, 110)   # leading pulse
-            else:
-                col = (44, 60, 50) if ((cx + ry + phase) % 8) < 2 else (20, 24, 30)  # shimmer
-            graphics.set_pen(screen.create_pen(col))
-            graphics.rectangle(cx * (cell + gap), ry * (cell + gap), cell, cell)
-            i += 1
+    for i, ch in enumerate(WORD):
+        if i in failed_indices:
+            col = RED
+        elif i < lit:
+            col = COLOURS[i]
+        else:
+            col = GREY
+        g = FONT5[ch]
+        cw = len(g[0])
+        for ry, row in enumerate(g):
+            for rx, p in enumerate(row):
+                if p == '#':
+                    screen.pixel(x + rx, y + ry, col)
+        x += cw + 1
+    i75.update()
+
+
+def draw_error_screen(errors):
+    """Dark red background with error names. Shown for 3s after VOXEL if
+    any stage failed. errors = list of short strings e.g. ['SERVER FAIL']."""
+    screen.clear()
+    graphics.set_pen(screen.create_pen((100, 0, 0)))
+    graphics.clear()
+    y = 2
+    for line in errors:
+        screen.text(line, 2, y, (255, 80, 80), font=FONT_3X5)
+        y += 7
     i75.update()
 
 def draw_animation(ref_ticks):
@@ -592,37 +625,36 @@ def draw_train_dashboard(dashboard_data, ref_time):
             graphics.set_pen(screen.create_pen(COL_GREY))
             graphics.line(0, y + 10, 64, y + 10)
 
-def draw_weather_4col(data, ref_ticks):
+def draw_weather_3col(data, ref_ticks):
     screen.clear()
     if not data:
         screen.text("WEATHER...", 5, 12, COL_WHITE, font=FONT_3X5)
         return
-    # 4 columns of 16px each; dividers at 16, 32, 48.
-    divider_col = (55, 55, 55)
-    for x in (16, 32, 48):
-        graphics.set_pen(screen.create_pen(divider_col))
-        graphics.line(x, 0, x, 32)
+    graphics.set_pen(screen.create_pen(COL_GREY))
+    graphics.line(21, 0, 21, 32)
+    graphics.line(43, 0, 43, 32)
+    col_starts = [1, 22, 44]
+    col_w = 20          # usable width per column (leaving 1px for divider)
     for i, day in enumerate(data):
-        if i > 3: break
-        col_x = i * 16
-        # Icon: 13 wide x 11 tall, 1px margin top-left.
+        if i > 2: break
+        x_base = col_starts[i]
         icon = WEATHER_ICONS.get(day['icon_name'], ICON_CLOUDY)
         for ry, row in enumerate(icon):
             for rx, ch in enumerate(row):
-                if ch != ' ':
+                if ch != ' ' and rx < col_w:   # clip to column width
                     c = ICON_PALETTE.get(ch, COL_WHITE)
-                    screen.pixel(col_x + 1 + rx, 1 + ry, c)
-        # Day label: today = TDY, everything else = actual day shorthand.
+                    screen.pixel(x_base + rx, 1 + ry, c)
+        # Day label centred in column
         lbl = day['day']
         lw = len(lbl) * 4 - 1
-        lx = col_x + (16 - lw) // 2
+        lx = x_base + (col_w - lw) // 2
         screen.text(lbl, lx, 13, COL_CYAN, font=FONT_3X5)
-        # Temps: low (blue) / high (red), centred together.
+        # Temps: low (blue) / high (red)
         lo = str(day['low']); hi = str(day['high'])
-        tw = (len(lo) * 4 - 1) + 2 + (len(hi) * 4 - 1)
-        tx = col_x + (16 - tw) // 2
-        screen.text(lo, tx, 20, COL_BLUE, font=FONT_3X5)
-        screen.text(hi, tx + (len(lo) * 4 - 1) + 2, 20, COL_RED, font=FONT_3X5)
+        total_w = (len(lo) * 4 - 1) + 2 + (len(hi) * 4 - 1)
+        tx = x_base + (col_w - total_w) // 2
+        screen.text(lo, tx, 22, COL_BLUE, font=FONT_3X5)
+        screen.text(hi, tx + (len(lo) * 4 - 1) + 2, 22, COL_RED, font=FONT_3X5)
 
 def get_word_width(word):
     w = 0
@@ -691,50 +723,72 @@ def main():
     print("Boot free bytes:", free_bytes())
     state = {"brightness": 0.2, "allowed_modes": ["TRAINS", "WEATHER"],
              "trains": [], "weather": [], "message": "", "reboot": False,
-             "epoch": 0, "tz_offset": 0}
+             "epoch": 0, "tz_offset": 0, "paired": True, "pair_code": ""}
 
-    # --- Filling-mosaic boot screen --------------------------------------
-    # Seven checks; the grid fills green as each is satisfied. It keeps
-    # animating and retrying on the network steps until the data is really
-    # there (with a cap so a down server can't trap us on the boot screen).
-    STEPS = 7
-    _phase = [0]
-    def grid(done_step):
-        _phase[0] += 1
-        draw_loading_grid(done_step / STEPS, _phase[0])
+    # --- VOXEL boot loader -------------------------------------------
+    # V = internal boot   O = server   X = firmware OK   E = APIs   L = ready
+    # Each letter takes at least 1 second. Failed letters go red, then
+    # an error screen lists what went wrong for 3 seconds before proceeding.
+    LETTER_MIN = 1.0
+    lit = 0
+    failed_set = set()
+    errors = []
 
-    def hold(done_step, frames, delay):
-        for _ in range(frames):
-            grid(done_step)
-            time.sleep(delay)
+    def light(ok, error_label=None):
+        nonlocal lit
+        if not ok:
+            failed_set.add(lit)
+            if error_label:
+                errors.append(error_label)
+        lit += 1
+        draw_voxel_loader(lit, failed_set)
 
-    hold(1, 8, 0.03)                              # 1: BOOT (we're running, so done)
+    def wait_min(start_t):
+        rem = LETTER_MIN - (time.time() - start_t)
+        if rem > 0:
+            time.sleep(rem)
 
-    while not check_wifi():                       # 2: WIFI — wait for it
-        grid(1); time.sleep(0.1)
-    hold(2, 6, 0.03)
+    # V — internal boot (always succeeds if we got here)
+    draw_voxel_loader(0)
+    t = time.time()
+    wait_min(t)
+    light(True)
 
-    attempts = 0                                  # 3-6: SERVER / WEATHER / TRAINS / TIME
-    while True:
-        state = fetch_display_state(state)
-        if not state.get("paired", True):         # unpaired -> stop here, show pair code
-            break
-        have_server = bool(state.get("epoch"))
-        have_weather = bool(state.get("weather"))
-        have_trains = bool(state.get("trains"))
-        if have_server and have_weather and have_trains:
-            break
-        attempts += 1
-        if attempts > 30:                         # ~ give up waiting (server down); proceed
-            break
-        # animate the leading edge around the "server" block while retrying
-        hold(3, 6, 0.12)
-    hold(3, 4, 0.03)                              # server responded
-    hold(4, 4, 0.04)                              # weather present
-    hold(5, 4, 0.04)                              # trains present
-    hold(6, 4, 0.04)                              # time/clock ready
+    # O — server connection
+    t = time.time()
+    state = fetch_display_state(state)
+    have_server = bool(state.get("epoch"))
+    wait_min(t)
+    light(have_server, "SERVER FAIL" if not have_server else None)
 
-    hold(7, 12, 0.025)                            # 7: READY — fill the whole grid
+    # X — firmware (always green: if we're running, code loaded fine)
+    t = time.time()
+    wait_min(t)
+    light(True)
+
+    # E — APIs (trains + weather both came back)
+    t = time.time()
+    have_weather = bool(state.get("weather"))
+    have_trains  = bool(state.get("trains"))
+    api_ok = have_weather and have_trains
+    if not have_weather: errors.append("WEATHER FAIL")
+    if not have_trains:  errors.append("TRAINS FAIL")
+    wait_min(t)
+    light(api_ok, None)    # error labels already appended above
+
+    # L — ready
+    t = time.time()
+    wait_min(t)
+    light(True)
+
+    # If anything failed, show the error screen for 3 seconds then continue.
+    if errors:
+        draw_error_screen(errors)
+        time.sleep(3)
+
+    # Brief hold on the complete VOXEL before main display
+    if not errors:
+        time.sleep(0.4)
 
     sync_tick = time.ticks_ms()
     last_poll = time.time()        # we already polled above; don't re-poll instantly
@@ -820,7 +874,7 @@ def main():
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
-        elif mode == "WEATHER": draw_weather_4col(state["weather"], now_ticks)
+        elif mode == "WEATHER": draw_weather_3col(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
         elif mode == "ANIM":    draw_animation(now_ticks)
         elif mode == "CLOCK":   draw_clock(local_struct)
