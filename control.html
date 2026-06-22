@@ -8,223 +8,315 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Screen Control</title>
 <style>
-  :root{
-    --bg:#0b0e14;--card:#151a23;--card2:#1c222e;--line:#28303d;
-    --text:#e7ecf3;--dim:#8a94a6;--accent:#3da9fc;--accent2:#2b8ad6;
-    --good:#39d98a;--warn:#ffb020;--danger:#ff5a5a;--radius:16px;
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{margin:0;background:var(--bg);color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
-    max-width:520px;margin-inline:auto;line-height:1.45}
-  h1{font-size:20px;margin:4px 0 2px;letter-spacing:.3px}
-  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
-  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 12px;font-weight:600}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
-  .row .k{color:var(--dim);font-size:14px}.row .v{font-weight:600;font-size:14px;text-align:right}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
-  .chip{background:var(--card2);border:1px solid var(--line);color:var(--text);font-size:12px;padding:3px 9px;border-radius:999px}
-  .bright-bar{height:8px;border-radius:999px;background:var(--card2);overflow:hidden;flex:1;margin-left:12px}
-  .bright-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));width:0%}
-  input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
-    border-radius:12px;padding:12px;font-size:16px;font-family:inherit}
-  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
-  textarea{resize:none;min-height:74px}
-  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a94a6' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
-  .count{color:var(--dim);font-size:12px;text-align:right;margin-top:6px}
-  button{width:100%;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;
-    color:#fff;background:var(--accent);margin-top:10px;cursor:pointer;font-family:inherit}
-  button:active{transform:scale(.99)}
-  button.secondary{background:var(--card2);border:1px solid var(--line);color:var(--text)}
-  button.danger{background:transparent;border:1px solid var(--danger);color:var(--danger)}
-  button.ghost{background:transparent;border:none;color:var(--dim);font-size:13px;margin-top:6px}
-  button:disabled{opacity:.5}
-  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));
-    background:#fff;color:#0b0e14;padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;
-    opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:200}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
-  .toast.err{background:var(--danger);color:#fff}
-  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
-  .dot.on{background:var(--good)}.dot.off{background:var(--danger)}.dot.wait{background:var(--warn)}
-  .devlink{background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0;width:auto;margin:0;cursor:pointer}
-  .muted{color:var(--dim);font-size:12px;margin-top:8px}
-  .auth-logo{font-size:28px;font-weight:700;margin-bottom:4px}
-  .auth-sub{color:var(--dim);font-size:14px;margin-bottom:32px}
-  .auth-tab{display:flex;gap:0;background:var(--card2);border-radius:12px;padding:4px;margin-bottom:18px}
-  .auth-tab button{flex:1;margin:0;border-radius:9px;background:transparent;color:var(--dim);padding:10px;font-size:14px}
-  .auth-tab button.active{background:var(--accent);color:#fff}
-  .field-label{color:var(--dim);font-size:12px;margin-bottom:6px;display:block}
-  .field{margin-bottom:14px}
-  #mainScreen{display:none}
+:root{
+  --bg:#0b0e14;--card:#151a23;--card2:#1c222e;--line:#28303d;
+  --text:#e7ecf3;--dim:#8a94a6;--accent:#3da9fc;--accent2:#2b8ad6;
+  --good:#39d98a;--warn:#ffb020;--danger:#ff5a5a;--radius:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+  max-width:520px;margin-inline:auto;line-height:1.45}
+h1{font-size:20px;margin:4px 0 2px;letter-spacing:.3px}
+.sub{color:var(--dim);font-size:13px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 
-  /* Catalogue grid */
-  .cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-  .cat-card{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;position:relative;cursor:pointer}
-  .cat-card:active{opacity:.8}
-  .cat-card .cat-name{font-size:14px;font-weight:600;margin-bottom:4px;padding-right:22px}
-  .cat-card .cat-type{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
-  .cat-card .cat-lock{position:absolute;top:10px;right:10px;font-size:14px;color:var(--dim)}
-  .cat-card .cat-actions{display:flex;gap:6px;margin-top:10px}
-  .cat-card .cat-actions button{margin:0;padding:6px 10px;font-size:12px;border-radius:8px;width:auto}
-  .type-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-  .type-trains{background:#1a2c1a;color:#39d98a}
-  .type-weather{background:#1a1f2c;color:#3da9fc}
-  .type-clock{background:#2c2a1a;color:#ffb020}
-  .type-message{background:#2c1a1a;color:#ff5a5a}
-  .type-animation{background:#241a2c;color:#b06afc}
+/* Cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;user-select:none}
+.card-header h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600;margin:0}
+.card-header .arrow{color:var(--dim);font-size:11px;transition:transform .2s;flex-shrink:0}
+.card-header.open .arrow{transform:rotate(90deg)}
+.card-body{padding:0 16px 16px;display:none}
+.card-body.open{display:block}
 
-  /* Schedule bands */
-  .band-row{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
-  .band-header{display:flex;align-items:center;gap:8px}
-  .band-time{font-weight:700;font-size:15px;min-width:52px}
-  .band-item-name{flex:1;font-size:14px;color:var(--text)}
-  .band-bright{font-size:13px;color:var(--dim);min-width:38px;text-align:right}
-  .band-controls{display:flex;gap:6px;align-self:flex-end}
-  .band-controls button{margin:0;padding:5px 10px;font-size:12px;border-radius:8px;width:auto}
+/* Generic rows */
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0}
+.row .k{color:var(--dim);font-size:14px}.row .v{font-weight:600;font-size:14px;text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.chip{background:var(--card2);border:1px solid var(--line);color:var(--text);font-size:12px;padding:3px 9px;border-radius:999px}
+.bright-bar{height:6px;border-radius:999px;background:var(--card2);overflow:hidden;flex:1;margin-left:12px}
+.bright-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));transition:width .3s}
 
-  /* Field rows inside sheet */
-  .field-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-  .field-row label{color:var(--dim);font-size:12px;min-width:72px}
-  .field-row input,.field-row select{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px;font-size:14px;font-family:inherit}
-  .field-row input:focus,.field-row select:focus{outline:none;border-color:var(--accent)}
-  .colour-swatch{width:30px;height:30px;border-radius:6px;border:2px solid var(--line);cursor:pointer;flex-shrink:0;padding:0}
-  .station-results{background:var(--card2);border:1px solid var(--line);border-radius:8px;margin-top:4px;max-height:160px;overflow-y:auto;display:none}
-  .station-result{padding:8px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
-  .station-result:last-child{border-bottom:none}
-  .station-result:hover,.station-result:active{background:var(--card)}
-  .station-result .crs{color:var(--dim);font-size:11px;margin-left:6px}
-  .board-row{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;position:relative}
-  .board-row h3{font-size:12px;font-weight:600;margin:0 0 8px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
-  .remove-btn{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--danger);font-size:18px;width:auto;margin:0;padding:0;cursor:pointer;line-height:1}
+/* Inputs */
+input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:12px;padding:11px 14px;font-size:15px;font-family:inherit;-webkit-appearance:none}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+textarea{resize:none;min-height:72px}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a94a6' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+.field{margin-bottom:12px}
+.field-label{color:var(--dim);font-size:12px;margin-bottom:5px;display:block}
+.count{color:var(--dim);font-size:12px;text-align:right;margin-top:4px}
 
-  /* Bottom sheet */
-  .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;opacity:0;transition:opacity .25s;pointer-events:none}
-  .sheet-overlay.open{opacity:1;pointer-events:all}
-  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:520px;
-    background:var(--card);border-radius:20px 20px 0 0;z-index:101;transition:transform .3s cubic-bezier(.32,0,.67,0);
-    max-height:90dvh;display:flex;flex-direction:column}
-  .sheet.open{transform:translateX(-50%) translateY(0)}
-  .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:2px;margin:12px auto 0}
-  .sheet-header{padding:16px 16px 0;display:flex;align-items:center;gap:10px}
-  .sheet-title{font-size:17px;font-weight:700;flex:1}
-  .sheet-close{background:none;border:none;color:var(--dim);font-size:22px;width:auto;margin:0;padding:4px 8px;cursor:pointer}
-  .sheet-body{padding:16px;overflow-y:auto;flex:1}
-  .sheet-footer{padding:12px 16px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:flex;gap:10px}
-  .sheet-footer button{margin:0;flex:1}
+/* Buttons */
+button{border:none;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:600;
+  color:#fff;background:var(--accent);cursor:pointer;font-family:inherit;display:inline-block}
+button:active{opacity:.85}
+button.full{width:100%;display:block;margin-top:10px}
+button.secondary{background:var(--card2);border:1px solid var(--line);color:var(--text)}
+button.danger{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+button.ghost{background:transparent;border:none;color:var(--dim);font-size:13px}
+button.sm{padding:6px 11px;font-size:12px;border-radius:8px}
+button:disabled{opacity:.45;pointer-events:none}
 
-  /* Device list */
-  .devlink-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--line)}
-  .devlink-row:last-child{border-bottom:none}
+/* Toast */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));
+  background:#fff;color:#0b0e14;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600;
+  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:300}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+.toast.err{background:var(--danger);color:#fff}
+
+/* Status dot */
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:middle;margin-right:5px}
+.dot.on{background:var(--good)}.dot.off{background:var(--danger)}.dot.wait{background:var(--warn)}
+.devlink{background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0;cursor:pointer}
+.muted{color:var(--dim);font-size:12px;margin-top:8px}
+.divider{height:1px;background:var(--line);margin:12px 0}
+
+/* Auth */
+.auth-logo{font-size:26px;font-weight:700;margin-bottom:4px;margin-top:24px}
+.auth-sub{color:var(--dim);font-size:14px;margin-bottom:28px}
+.auth-tabs{display:flex;background:var(--card2);border-radius:12px;padding:3px;margin-bottom:16px;gap:3px}
+.auth-tabs button{flex:1;margin:0;border-radius:9px;background:transparent;color:var(--dim);padding:9px;font-size:14px}
+.auth-tabs button.active{background:var(--accent);color:#fff}
+
+/* Screens grid */
+.screen-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.screen-card{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px}
+.screen-card .sc-name{font-size:14px;font-weight:600;margin-bottom:3px}
+.screen-card .sc-type{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.screen-card .sc-actions{display:flex;gap:5px;flex-wrap:wrap}
+.type-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;letter-spacing:.4px}
+.type-trains{background:#172817;color:#39d98a}
+.type-weather{background:#131b26;color:#3da9fc}
+.type-clock{background:#26231a;color:#ffb020}
+.type-message{background:#26181a;color:#ff7070}
+.type-animation{background:#1e1826;color:#b06afc}
+
+/* Catalogue list */
+.cat-item{background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+.cat-item-header{display:flex;align-items:center;gap:10px;padding:12px;cursor:pointer}
+.cat-item-header .cat-name{flex:1;font-size:15px;font-weight:600}
+.cat-item-header .cat-count{font-size:12px;color:var(--dim)}
+.cat-item-header .arrow{color:var(--dim);font-size:11px;transition:transform .2s;flex-shrink:0}
+.cat-item-header.open .arrow{transform:rotate(90deg)}
+.cat-item-body{display:none;border-top:1px solid var(--line)}
+.cat-item-body.open{display:block}
+.cat-screen-slot{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.cat-screen-slot:last-child{border-bottom:none}
+.css-name{flex:1;font-size:14px}
+.css-dur{display:flex;align-items:center;gap:4px}
+.css-dur input{width:52px;text-align:center;padding:6px 8px;font-size:14px;border-radius:8px;background:var(--bg);flex:none}
+.css-dur span{font-size:12px;color:var(--dim)}
+.cat-slot-actions{display:flex;gap:4px;flex-shrink:0}
+.cat-footer{padding:10px 12px;display:flex;gap:6px;align-items:center;border-top:1px solid var(--line)}
+
+/* Schedule stack */
+.sched-stack{margin-bottom:10px}
+.sched-midnight{font-size:12px;color:var(--dim);padding:6px 0;display:flex;align-items:center;gap:8px}
+.sched-midnight::after{content:"";flex:1;height:1px;background:var(--line)}
+.sched-band{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--card2);
+  border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
+.sb-time{font-size:12px;color:var(--dim);min-width:42px;font-weight:600}
+.sb-name{flex:1;font-size:14px;font-weight:600}
+.sb-bright{font-size:12px;color:var(--dim);min-width:36px;text-align:right}
+.sb-actions{display:flex;gap:4px;flex-shrink:0}
+
+/* Sheet */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;opacity:0;
+  transition:opacity .2s;pointer-events:none}
+.overlay.open{opacity:1;pointer-events:all}
+.sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);
+  width:100%;max-width:520px;background:var(--card);border-radius:20px 20px 0 0;
+  z-index:101;transition:transform .28s cubic-bezier(.32,0,.67,0);
+  max-height:92dvh;display:flex;flex-direction:column}
+.sheet.open{transform:translateX(-50%) translateY(0)}
+.sheet-handle{width:36px;height:4px;background:var(--line);border-radius:2px;margin:12px auto 0;flex-shrink:0}
+.sheet-hdr{padding:14px 16px 0;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.sheet-title{font-size:17px;font-weight:700;flex:1}
+.sheet-close{background:none;border:none;color:var(--dim);font-size:22px;padding:0 4px;cursor:pointer;line-height:1}
+.sheet-body{padding:16px;overflow-y:auto;flex:1}
+.sheet-footer{padding:12px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0}
+.sheet-footer button{flex:1;margin:0}
+
+/* Station search */
+.station-results{background:var(--card2);border:1px solid var(--line);border-radius:10px;
+  margin-top:4px;max-height:150px;overflow-y:auto;display:none}
+.station-result{padding:8px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.station-result:last-child{border-bottom:none}
+.station-result:active{background:var(--card)}
+.station-result .crs{color:var(--dim);font-size:11px;margin-left:6px}
+
+/* Board rows inside screen editor */
+.board-row{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;position:relative}
+.board-row .br-label{font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.fr{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.fr label{color:var(--dim);font-size:12px;min-width:68px;flex-shrink:0}
+.fr input,.fr select{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;-webkit-appearance:none}
+.fr input:focus,.fr select:focus{outline:none;border-color:var(--accent)}
+.colour-swatch{width:30px;height:30px;border-radius:6px;border:2px solid var(--line);
+  cursor:pointer;flex-shrink:0;padding:0;-webkit-appearance:none}
+.rm-btn{position:absolute;top:8px;right:8px;background:none;border:none;
+  color:var(--danger);font-size:18px;cursor:pointer;padding:0;line-height:1}
+
+/* Device list */
+.dev-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;
+  border-bottom:1px solid var(--line);cursor:pointer}
+.dev-row:last-child{border-bottom:none}
+
+#mainScreen{display:none}
+#authScreen{display:flex;flex-direction:column}
 </style>
 </head>
 <body>
 
-<!-- AUTH SCREEN -->
+<!-- AUTH -->
 <div id="authScreen">
   <div class="auth-logo">Screen Control</div>
   <div class="auth-sub">Sign in to manage your screens</div>
-  <div class="auth-tab">
+  <div class="auth-tabs">
     <button class="active" id="tabLogin" onclick="showTab('login')">Sign in</button>
     <button id="tabSignup" onclick="showTab('signup')">Create account</button>
   </div>
-  <div class="field">
-    <label class="field-label">Email</label>
-    <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email">
-  </div>
-  <div class="field">
-    <label class="field-label">Password</label>
-    <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password">
-  </div>
-  <div class="field" id="confirmField" style="display:none">
-    <label class="field-label">Confirm password</label>
-    <input type="password" id="authConfirm" placeholder="Confirm password">
-  </div>
-  <button id="authBtn">Sign in</button>
-  <button class="ghost" id="forgotBtn" onclick="forgotPassword()">Forgot password?</button>
-  <div class="muted" id="authNote" style="text-align:center;margin-top:12px"></div>
+  <div class="field"><label class="field-label">Email</label>
+    <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email"></div>
+  <div class="field"><label class="field-label">Password</label>
+    <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password"></div>
+  <div class="field" id="confirmField" style="display:none"><label class="field-label">Confirm password</label>
+    <input type="password" id="authConfirm" placeholder="Confirm password"></div>
+  <button class="full" id="authBtn">Sign in</button>
+  <button class="ghost full" id="forgotBtn" onclick="forgotPassword()">Forgot password?</button>
+  <div class="muted" id="authNote" style="text-align:center;margin-top:10px"></div>
 </div>
 
-<!-- MAIN SCREEN -->
+<!-- MAIN -->
 <div id="mainScreen">
   <h1>Screen Control</h1>
   <div class="sub">
     <span id="conn"><span class="dot wait"></span>connecting…</span>
-    &nbsp;·&nbsp; <span id="userEmail" style="color:var(--dim);font-size:13px"></span>
-    &nbsp;·&nbsp; <button class="devlink" id="devBtn"></button>
-    &nbsp;·&nbsp; <button class="devlink" onclick="signOut()" style="color:var(--danger)">Sign out</button>
+    <span style="color:var(--line)">·</span>
+    <span id="userEmail" style="color:var(--dim);font-size:13px"></span>
+    <span style="color:var(--line)">·</span>
+    <button class="devlink" id="devBtn"></button>
+    <span style="color:var(--line)">·</span>
+    <button class="devlink" onclick="signOut()" style="color:var(--danger)">Sign out</button>
   </div>
 
+  <!-- On screen now -->
   <div class="card">
-    <h2>On screen now</h2>
-    <div class="row"><span class="k">Brightness</span><span class="v" id="brightVal">–</span></div>
-    <div class="row"><span class="k"></span><div class="bright-bar"><div class="bright-fill" id="brightFill"></div></div></div>
-    <div class="row"><span class="k">Showing</span><div class="chips" id="modes"></div></div>
-    <div class="row"><span class="k">Active message</span><span class="v" id="activeMsg">none</span></div>
+    <div class="card-header open" onclick="toggleCard(this)">
+      <h2>On screen now</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body open">
+      <div class="row"><span class="k">Brightness</span><span class="v" id="brightVal">–</span></div>
+      <div class="row"><span class="k"></span><div class="bright-bar"><div class="bright-fill" id="brightFill" style="width:0%"></div></div></div>
+      <div class="row"><span class="k">Showing</span><div class="chips" id="modes"><span class="chip">–</span></div></div>
+      <div class="row"><span class="k">Message</span><span class="v" id="activeMsg">none</span></div>
+    </div>
   </div>
 
+  <!-- My screens (devices) -->
   <div class="card">
-    <h2>My screens</h2>
-    <div id="deviceList"><div style="color:var(--dim);font-size:14px">Loading…</div></div>
+    <div class="card-header open" onclick="toggleCard(this)">
+      <h2>My screens</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body open">
+      <div id="deviceList"><div style="color:var(--dim);font-size:14px">Loading…</div></div>
+    </div>
   </div>
 
+  <!-- Send a message -->
   <div class="card">
-    <h2>Send a message</h2>
-    <textarea id="msg" maxlength="160" placeholder="Type something to show on the screen…"></textarea>
-    <div class="count"><span id="count">0</span>/160</div>
-    <button id="sendBtn">Send to screen</button>
-    <button class="secondary" id="clearBtn">Clear message</button>
-    <div class="muted">Messages show within ~20s and clear themselves after 1 hour.</div>
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Send a message</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <textarea id="msg" maxlength="160" placeholder="Type something to show on the screen…"></textarea>
+      <div class="count"><span id="count">0</span>/160</div>
+      <button class="full" id="sendBtn">Send to screen</button>
+      <button class="full secondary" id="clearBtn">Clear message</button>
+      <div class="muted">Messages show within ~20s and clear after 1 hour.</div>
+    </div>
   </div>
 
-  <!-- CATALOGUE -->
+  <!-- Screens -->
   <div class="card">
-    <h2>My catalogue</h2>
-    <div id="catalogueGrid" class="cat-grid"><div style="color:var(--dim);font-size:14px;grid-column:1/-1">Loading…</div></div>
-    <button class="secondary" id="newItemBtn">+ New item</button>
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Screens</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <div class="muted" style="margin-bottom:12px">Screens are the individual display types — trains, clock, weather, etc. Configure and name them, then add them to catalogues.</div>
+      <div class="screen-grid" id="screenGrid"><div style="color:var(--dim);font-size:14px;grid-column:1/-1">Loading…</div></div>
+      <button class="full secondary" id="newScreenBtn">+ New screen</button>
+    </div>
   </div>
 
-  <!-- SCHEDULE -->
+  <!-- Catalogues -->
   <div class="card">
-    <h2>Schedule</h2>
-    <div id="scheduleBands"><div style="color:var(--dim);font-size:14px">Loading…</div></div>
-    <button class="secondary" id="addBandBtn">+ Add time band</button>
-    <div class="muted" style="margin-bottom:10px">The first band whose start hour ≤ the current hour is shown. Falls back to built-in schedule if empty.</div>
-    <button id="saveScheduleBtn">Save schedule</button>
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Catalogues</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <div class="muted" style="margin-bottom:12px">A catalogue is a playlist of screens. Each screen in the playlist has its own play duration. Build multiple catalogues and assign them to time slots in the Schedule.</div>
+      <div id="catalogueList"><div style="color:var(--dim);font-size:14px">Loading…</div></div>
+      <button class="full secondary" id="newCatBtn">+ New catalogue</button>
+    </div>
   </div>
 
+  <!-- Schedule -->
   <div class="card">
-    <h2>Pair a new device</h2>
-    <input id="pairCode" maxlength="6" placeholder="CODE FROM SCREEN"
-      style="text-transform:uppercase;letter-spacing:3px;text-align:center;font-size:18px">
-    <button id="pairBtn">Pair</button>
-    <div class="muted">Type the 6-character code shown on the new screen.</div>
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Schedule</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <div class="muted" style="margin-bottom:12px">Stack starts at midnight. Each slot plays its catalogue until the set hour, then the next slot begins. The last slot always ends at midnight.</div>
+      <div class="sched-stack" id="schedStack"></div>
+      <button class="full secondary" id="addBandBtn">+ Add time slot</button>
+      <button class="full" id="saveSchedBtn" style="margin-top:8px">Save schedule</button>
+    </div>
   </div>
 
+  <!-- Pair -->
   <div class="card">
-    <h2>Maintenance</h2>
-    <button class="danger" id="rebootBtn">Restart screen</button>
-    <div class="muted">Use after pushing a new version, or if the screen looks stuck.</div>
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Pair a new device</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <input id="pairCode" maxlength="6" placeholder="CODE FROM SCREEN"
+        style="text-transform:uppercase;letter-spacing:3px;text-align:center;font-size:18px">
+      <button class="full" id="pairBtn">Pair</button>
+      <div class="muted">Type the 6-character code shown on the new screen.</div>
+    </div>
+  </div>
+
+  <!-- Maintenance -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>Maintenance</h2><span class="arrow">▶</span>
+    </div>
+    <div class="card-body">
+      <button class="full danger" id="rebootBtn">Restart screen</button>
+      <div class="muted">Use after pushing a new version or if the screen looks stuck.</div>
+    </div>
   </div>
 </div>
 
-<!-- CATALOGUE ITEM SHEET -->
-<div class="sheet-overlay" id="itemOverlay" onclick="closeItemSheet()"></div>
-<div class="sheet" id="itemSheet">
+<!-- SCREEN EDITOR SHEET -->
+<div class="overlay" id="screenOverlay" onclick="closeScreenSheet()"></div>
+<div class="sheet" id="screenSheet">
   <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <div class="sheet-title" id="sheetTitle">Edit item</div>
-    <button class="sheet-close" onclick="closeItemSheet()">×</button>
+  <div class="sheet-hdr">
+    <div class="sheet-title" id="screenSheetTitle">New screen</div>
+    <button class="sheet-close" onclick="closeScreenSheet()">×</button>
   </div>
   <div class="sheet-body">
-    <div class="field">
-      <label class="field-label">Name</label>
-      <input id="itemName" placeholder="e.g. Morning trains">
-    </div>
-    <div class="field">
-      <label class="field-label">Type</label>
-      <select id="itemType" onchange="renderItemFields()">
+    <div class="field"><label class="field-label">Name</label>
+      <input id="screenName" placeholder="e.g. Morning trains"></div>
+    <div class="field"><label class="field-label">Type</label>
+      <select id="screenType" onchange="renderScreenFields()">
         <option value="trains">Trains</option>
         <option value="weather">Weather</option>
         <option value="clock">Clock</option>
@@ -232,33 +324,50 @@
         <option value="animation">Animation</option>
       </select>
     </div>
-    <div id="itemFields"></div>
+    <div id="screenFields"></div>
   </div>
   <div class="sheet-footer">
-    <button class="secondary" onclick="closeItemSheet()">Cancel</button>
-    <button id="saveItemBtn">Save</button>
+    <button class="secondary" onclick="closeScreenSheet()">Cancel</button>
+    <button id="saveScreenBtn">Save</button>
+  </div>
+</div>
+
+<!-- ADD SCREEN TO CATALOGUE SHEET -->
+<div class="overlay" id="addSlotOverlay" onclick="closeAddSlotSheet()"></div>
+<div class="sheet" id="addSlotSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-hdr">
+    <div class="sheet-title">Add screen to catalogue</div>
+    <button class="sheet-close" onclick="closeAddSlotSheet()">×</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field"><label class="field-label">Screen</label>
+      <select id="slotScreen"></select></div>
+    <div class="field">
+      <label class="field-label">Duration — <span id="slotDurLabel">10s</span></label>
+      <input type="range" id="slotDur" min="2" max="60" value="10"
+        oninput="document.getElementById('slotDurLabel').textContent=this.value+'s'">
+    </div>
+  </div>
+  <div class="sheet-footer">
+    <button class="secondary" onclick="closeAddSlotSheet()">Cancel</button>
+    <button id="addSlotBtn">Add</button>
   </div>
 </div>
 
 <!-- SCHEDULE BAND SHEET -->
-<div class="sheet-overlay" id="bandOverlay" onclick="closeBandSheet()"></div>
+<div class="overlay" id="bandOverlay" onclick="closeBandSheet()"></div>
 <div class="sheet" id="bandSheet">
   <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <div class="sheet-title">Edit time band</div>
+  <div class="sheet-hdr">
+    <div class="sheet-title">Time slot</div>
     <button class="sheet-close" onclick="closeBandSheet()">×</button>
   </div>
   <div class="sheet-body">
-    <div class="field">
-      <label class="field-label">From (hour)</label>
-      <select id="bandHour">
-        ${Array.from({length:24},(_,h)=>`<option value="${h}">${String(h).padStart(2,"0")}:00</option>`).join("")}
-      </select>
-    </div>
-    <div class="field">
-      <label class="field-label">Screen</label>
-      <select id="bandItem"></select>
-    </div>
+    <div class="field"><label class="field-label">Catalogue</label>
+      <select id="bandCat"></select></div>
+    <div class="field"><label class="field-label">Plays until</label>
+      <select id="bandEnd"></select></div>
     <div class="field">
       <label class="field-label">Brightness — <span id="bandBrightLabel">100%</span></label>
       <input type="range" id="bandBright" min="0" max="100" value="100"
@@ -267,7 +376,7 @@
   </div>
   <div class="sheet-footer">
     <button class="secondary" onclick="closeBandSheet()">Cancel</button>
-    <button id="saveBandBtn">Save band</button>
+    <button id="saveBandBtn">Save slot</button>
   </div>
 </div>
 
@@ -275,617 +384,609 @@
 
 <script>
 (function(){
-  const SB_URL  = "https://zumpbzgbhzvcwwijrbip.supabase.co";
-  const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bXBiemdiaHp2Y3d3aWpyYmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDM1NDAsImV4cCI6MjA5NjY3OTU0MH0.7zG_CR82sxo48ugxdN67DRUmgr_LU06deQU4qsovT4g";
+'use strict';
+const SB_URL  = "https://zumpbzgbhzvcwwijrbip.supabase.co";
+const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bXBiemdiaHp2Y3d3aWpyYmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDM1NDAsImV4cCI6MjA5NjY3OTU0MH0.7zG_CR82sxo48ugxdN67DRUmgr_LU06deQU4qsovT4g";
 
-  let token = localStorage.getItem("sb_token") || "";
-  let currentDeviceId = localStorage.getItem("deviceId") || "";
-  let currentTab = "login";
-  const $ = id => document.getElementById(id);
+let token = localStorage.getItem("sb_token") || "";
+let currentDeviceId = localStorage.getItem("deviceId") || "";
+let currentTab = "login";
+const $ = id => document.getElementById(id);
 
-  // ---- Toast ----
-  function toast(text, isErr){
-    const t = $("toast");
-    t.textContent = text;
-    t.className = "toast show" + (isErr ? " err" : "");
-    clearTimeout(t._t);
-    t._t = setTimeout(() => { t.className = "toast"; }, 2800);
-  }
+// ── Helpers ───────────────────────────────────────────────────────
+function toast(msg, err){
+  const t=$("toast"); t.textContent=msg;
+  t.className="toast show"+(err?" err":"");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className="toast",2800);
+}
+function setConn(s,l){ $("conn").innerHTML=`<span class="dot ${s}"></span>${l}`; }
+function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function colToHex(a){ return "#"+(a||[0,0,0]).map(v=>v.toString(16).padStart(2,"0")).join(""); }
+function hexToCol(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function fmtHour(h){ return h===0?"Midnight":String(h).padStart(2,"0")+":00"; }
 
-  function setConn(state, label){
-    $("conn").innerHTML = '<span class="dot '+state+'"></span>'+label;
-  }
+function toggleCard(hdr){
+  const body=hdr.nextElementSibling;
+  const open=body.classList.toggle("open");
+  hdr.classList.toggle("open",open);
+}
+window.toggleCard=toggleCard;
 
-  // ---- Auth tab ----
-  function showTab(tab){
-    currentTab = tab;
-    $("tabLogin").className = tab === "login" ? "active" : "";
-    $("tabSignup").className = tab === "signup" ? "active" : "";
-    $("authBtn").textContent = tab === "login" ? "Sign in" : "Create account";
-    $("confirmField").style.display = tab === "signup" ? "block" : "none";
-    $("forgotBtn").style.display = tab === "login" ? "block" : "none";
-    $("authNote").textContent = "";
-  }
-  window.showTab = showTab;
+// ── Auth ─────────────────────────────────────────────────────────
+function showTab(t){
+  currentTab=t;
+  $("tabLogin").className=t==="login"?"active":"";
+  $("tabSignup").className=t==="signup"?"active":"";
+  $("authBtn").textContent=t==="login"?"Sign in":"Create account";
+  $("confirmField").style.display=t==="signup"?"block":"none";
+  $("forgotBtn").style.display=t==="login"?"":"none";
+  $("authNote").textContent="";
+}
+window.showTab=showTab;
 
-  async function sbAuth(path, body){
-    const r = await fetch(SB_URL + "/auth/v1" + path, {
-      method: "POST",
-      headers: {"Content-Type":"application/json","apikey":SB_ANON},
-      body: JSON.stringify(body)
-    });
+async function sbPost(path,body){
+  const r=await fetch(SB_URL+"/auth/v1"+path,{method:"POST",
+    headers:{"Content-Type":"application/json","apikey":SB_ANON},body:JSON.stringify(body)});
+  return r.json();
+}
+async function doAuth(){
+  const email=$("authEmail").value.trim(), pw=$("authPassword").value;
+  if(!email||!pw){toast("Enter email and password",true);return;}
+  $("authBtn").disabled=true;
+  try{
+    let d;
+    if(currentTab==="login"){
+      d=await sbPost("/token?grant_type=password",{email,password:pw});
+    } else {
+      const c=$("authConfirm").value;
+      if(pw!==c){toast("Passwords don't match",true);$("authBtn").disabled=false;return;}
+      d=await sbPost("/signup",{email,password:pw});
+      if(d.id&&!d.access_token){$("authNote").textContent="Check your email, then sign in.";$("authBtn").disabled=false;return;}
+    }
+    if(d.access_token){ token=d.access_token; localStorage.setItem("sb_token",token); showMain(d.user); }
+    else toast(d.error_description||d.msg||"Auth failed",true);
+  }catch(e){toast("Network error",true);}
+  $("authBtn").disabled=false;
+}
+async function forgotPassword(){
+  const e=$("authEmail").value.trim();
+  if(!e){toast("Enter your email first",true);return;}
+  await sbPost("/recover",{email:e}); toast("Reset email sent");
+}
+window.forgotPassword=forgotPassword;
+function signOut(){
+  token=""; localStorage.removeItem("sb_token");
+  $("mainScreen").style.display="none"; $("authScreen").style.display="flex";
+  $("authPassword").value=""; $("authNote").textContent="";
+}
+window.signOut=signOut;
+
+// ── API ───────────────────────────────────────────────────────────
+function authHdr(){ return {"Content-Type":"application/json","Authorization":"Bearer "+token}; }
+async function api(path,opts={}){
+  const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),20000);
+  try{
+    const r=await fetch(path,{signal:ctrl.signal,headers:authHdr(),...opts});
+    clearTimeout(timer);
+    if(r.status===401){if(token){token="";localStorage.removeItem("sb_token");}return null;}
     return r.json();
+  }finally{clearTimeout(timer);}
+}
+
+// ── Main ──────────────────────────────────────────────────────────
+function showMain(user){
+  $("authScreen").style.display="none"; $("mainScreen").style.display="block";
+  $("userEmail").textContent=user?.email||"";
+  $("devBtn").textContent=currentDeviceId||"pick a screen";
+  loadDevices(); loadScreens(); loadCatalogues();
+  if(currentDeviceId){refresh();loadSchedule();}
+  setInterval(()=>{if(currentDeviceId)refresh();},8000);
+}
+function authHeaders(){ return {"Content-Type":"application/json","Authorization":"Bearer "+token}; }
+
+async function loadDevices(){
+  const d=await api("/api/user/me"); if(!d)return;
+  const list=d.devices||[];
+  if(!list.length){$("deviceList").innerHTML='<div style="color:var(--dim);font-size:14px">No screens yet — pair one below.</div>';return;}
+  $("deviceList").innerHTML=list.map(d=>`
+    <div class="dev-row" onclick="selectDevice('${d.device_id}')">
+      <span style="font-size:14px">${esc(d.name||d.device_id)}</span>
+      <span style="color:var(--${currentDeviceId===d.device_id?"good":"dim"});font-size:12px;font-weight:600">
+        ${currentDeviceId===d.device_id?"● active":d.device_id}
+      </span>
+    </div>`).join("");
+  if(!currentDeviceId&&list.length===1)selectDevice(list[0].device_id);
+}
+function selectDevice(id){
+  currentDeviceId=id; localStorage.setItem("deviceId",id);
+  $("devBtn").textContent=id; loadDevices(); refresh(); loadSchedule();
+}
+window.selectDevice=selectDevice;
+
+async function refresh(){
+  if(!currentDeviceId){setConn("wait","pick a screen");return;}
+  try{
+    const d=await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/display");
+    if(!d)return;
+    const pct=Math.round((d.brightness||0)*100);
+    $("brightVal").textContent=pct+"%"; $("brightFill").style.width=pct+"%";
+    $("modes").innerHTML=(d.allowed_modes||[]).map(m=>`<span class="chip">${m}</span>`).join("")||'<span class="chip">–</span>';
+    $("activeMsg").textContent=d.message?`"${d.message}"`:"none";
+    setConn("on","live");
+  }catch(e){setConn("wait","server waking…");}
+}
+
+async function sendMessage(){
+  const t=$("msg").value.trim();
+  if(!t){toast("Type a message first",true);return;}
+  if(!currentDeviceId){toast("Select a screen first",true);return;}
+  $("sendBtn").disabled=true;
+  const r=await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{method:"POST",body:JSON.stringify({message:t})});
+  if(r?.ok){toast("Sent!"); $("msg").value=""; $("count").textContent="0"; refresh();}
+  else toast("Failed",true);
+  $("sendBtn").disabled=false;
+}
+async function clearMessage(){
+  if(!currentDeviceId){toast("Select a screen first",true);return;}
+  const r=await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{method:"POST",body:JSON.stringify({message:""})});
+  if(r?.ok){toast("Cleared");refresh();}else toast("Failed",true);
+}
+async function reboot(){
+  if(!currentDeviceId){toast("Select a screen first",true);return;}
+  if(!confirm("Restart this screen now?"))return;
+  const r=await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{method:"POST",body:JSON.stringify({reboot:true})});
+  if(r?.ok)toast("Restart sent");else toast("Failed",true);
+}
+async function pair(){
+  const code=$("pairCode").value.trim().toUpperCase();
+  if(code.length<4){toast("Enter the code from the screen",true);return;}
+  $("pairBtn").disabled=true;
+  const r=await api("/api/user/pair",{method:"POST",body:JSON.stringify({code})});
+  if(r?.ok){
+    toast("Paired! "+r.device_id); $("pairCode").value="";
+    currentDeviceId=r.device_id; localStorage.setItem("deviceId",r.device_id);
+    $("devBtn").textContent=r.device_id; loadDevices(); refresh(); loadSchedule();
+  }else toast(r?.detail||"Pairing failed",true);
+  $("pairBtn").disabled=false;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCREENS
+// ═══════════════════════════════════════════════════════════════════
+let screens=[]; // atomic display configs
+
+async function loadScreens(){
+  const s=await api("/api/screens"); if(!s)return;
+  screens=s; renderScreens();
+}
+
+const TYPE_LABEL={trains:"Trains",weather:"Weather",clock:"Clock",message:"Message",animation:"Animation"};
+
+function renderScreens(){
+  const g=$("screenGrid");
+  if(!screens.length){g.innerHTML='<div style="color:var(--dim);font-size:14px;grid-column:1/-1">No screens yet.</div>';return;}
+  g.innerHTML=screens.map(s=>`
+    <div class="screen-card">
+      <div class="sc-name">${esc(s.name)}</div>
+      <div class="sc-type"><span class="type-badge type-${s.type}">${TYPE_LABEL[s.type]||s.type}</span></div>
+      <div class="sc-actions">
+        ${!s.is_builtin?`<button class="sm secondary" onclick="openScreenSheet('${s.id}')">Edit</button>`:""}
+        <button class="sm secondary" onclick="dupScreen('${s.id}')">Copy</button>
+        ${!s.is_builtin?`<button class="sm danger" onclick="delScreen('${s.id}')">Del</button>`:""}
+      </div>
+    </div>`).join("");
+}
+
+// Screen sheet state
+let editingScreenId=null;
+let _sheetBoards=[];
+
+function openNewScreenSheet(){
+  editingScreenId=null; $("screenSheetTitle").textContent="New screen";
+  $("screenName").value=""; $("screenType").value="trains";
+  renderScreenFields(); openSheet("screen");
+}
+function openScreenSheet(id){
+  const s=screens.find(x=>x.id===id); if(!s)return;
+  editingScreenId=id; $("screenSheetTitle").textContent="Edit: "+s.name;
+  $("screenName").value=s.name; $("screenType").value=s.type;
+  renderScreenFields(s.config||{}); openSheet("screen");
+}
+window.openScreenSheet=openScreenSheet;
+function closeScreenSheet(){ closeSheet("screen"); }
+window.closeScreenSheet=closeScreenSheet;
+
+function renderScreenFields(cfg={}){
+  const type=$("screenType").value, el=$("screenFields");
+  if(type==="trains"){
+    _sheetBoards=cfg.boards?.length?JSON.parse(JSON.stringify(cfg.boards))
+      :[{badge:"",badge_col:[150,0,0],station:"",match:[],_n:""}];
+    el.innerHTML=`<div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:8px">Train rows (up to 3)</div>
+      <div id="sheetBoards"></div>
+      <button class="full secondary" id="addBoardBtn" style="font-size:13px;padding:10px">+ Add row</button>`;
+    renderSheetBoards();
+    $("addBoardBtn").onclick=()=>{ if(_sheetBoards.length>=3){toast("Max 3 rows",true);return;} _sheetBoards.push({badge:"",badge_col:[80,80,80],station:"",match:[],_n:""}); renderSheetBoards(); };
+  }else if(type==="weather"){
+    el.innerHTML=`<div class="muted" style="margin-top:4px">Weather uses the server's configured location. No extra settings needed.</div>`;
+  }else if(type==="clock"){
+    el.innerHTML=`
+      <div class="fr"><label>Colour</label>
+        <input type="color" id="clockCol" value="${colToHex(cfg.color||[255,255,255])}" class="colour-swatch" style="flex:none"></div>
+      <div class="fr"><label>Format</label>
+        <select id="clockFmt">
+          <option value="24h" ${(cfg.format||"24h")==="24h"?"selected":""}>24-hour</option>
+          <option value="12h" ${cfg.format==="12h"?"selected":""}>12-hour</option>
+        </select></div>`;
+  }else if(type==="message"){
+    el.innerHTML=`<div class="field"><label class="field-label">Default text (leave blank to use the send-message feature)</label>
+      <textarea id="msgText" maxlength="160" placeholder="Optional default…">${esc(cfg.text||"")}</textarea></div>`;
+  }else if(type==="animation"){
+    el.innerHTML=`<div class="field"><label class="field-label">Animation URL (.bin)</label>
+      <input id="animUrl" type="url" placeholder="https://…" value="${esc(cfg.url||"")}"></div>`;
   }
+}
+window.renderScreenFields=renderScreenFields;
 
-  async function doAuth(){
-    const email = $("authEmail").value.trim();
-    const pw = $("authPassword").value;
-    if(!email || !pw){ toast("Enter email and password", true); return; }
-    $("authBtn").disabled = true;
-    try{
-      let data;
-      if(currentTab === "login"){
-        data = await sbAuth("/token?grant_type=password", {email, password: pw});
-      } else {
-        const confirm = $("authConfirm").value;
-        if(pw !== confirm){ toast("Passwords don't match", true); $("authBtn").disabled=false; return; }
-        data = await sbAuth("/signup", {email, password: pw});
-        if(data.id && !data.access_token){
-          $("authNote").textContent = "Check your email to confirm your account, then sign in.";
-          $("authBtn").disabled = false; return;
-        }
-      }
-      if(data.access_token){
-        token = data.access_token;
-        localStorage.setItem("sb_token", token);
-        showMain(data.user);
-      } else {
-        toast(data.error_description || data.msg || "Auth failed", true);
-      }
-    } catch(e){ toast("Network error", true); }
-    $("authBtn").disabled = false;
-  }
-
-  async function forgotPassword(){
-    const email = $("authEmail").value.trim();
-    if(!email){ toast("Enter your email first", true); return; }
-    await sbAuth("/recover", {email});
-    toast("Password reset email sent");
-  }
-  window.forgotPassword = forgotPassword;
-
-  function signOut(){
-    token = ""; localStorage.removeItem("sb_token");
-    $("mainScreen").style.display = "none";
-    $("authScreen").style.display = "flex";
-    $("authPassword").value = "";
-    $("authNote").textContent = "";
-  }
-  window.signOut = signOut;
-
-  // ---- Main app ----
-  function showMain(user){
-    $("authScreen").style.display = "none";
-    $("mainScreen").style.display = "block";
-    $("userEmail").textContent = user?.email || "";
-    $("devBtn").textContent = currentDeviceId || "pick a screen";
-    loadUserDevices();
-    loadCatalogue();
-    if(currentDeviceId){ refresh(); loadSchedule(); }
-    setInterval(() => { if(currentDeviceId) refresh(); }, 8000);
-  }
-
-  function authHeaders(){
-    return {"Content-Type":"application/json","Authorization":"Bearer "+token};
-  }
-
-  async function api(path, opts){
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 20000);
-    try{
-      const res = await fetch(path, Object.assign({signal: ctrl.signal, headers: authHeaders()}, opts));
-      clearTimeout(timer);
-      if(res.status === 401){
-        if(token){ token=""; localStorage.removeItem("sb_token"); }
-        return null;
-      }
-      return await res.json();
-    } finally { clearTimeout(timer); }
-  }
-
-  async function loadUserDevices(){
-    const data = await api("/api/user/me");
-    if(!data) return;
-    const list = data.devices || [];
-    if(list.length === 0){
-      $("deviceList").innerHTML = '<div style="color:var(--dim);font-size:14px">No screens yet. Pair one below.</div>';
-      return;
-    }
-    $("deviceList").innerHTML = list.map(d => `
-      <div class="devlink-row" onclick="selectDevice('${d.device_id}')">
-        <span style="font-size:14px">${d.name || d.device_id}</span>
-        <span style="color:var(--${currentDeviceId===d.device_id?'good':'dim'});font-size:12px;font-weight:600">
-          ${currentDeviceId===d.device_id ? '● active' : d.device_id}
-        </span>
-      </div>`).join("");
-    if(!currentDeviceId && list.length === 1) selectDevice(list[0].device_id);
-  }
-
-  function selectDevice(id){
-    currentDeviceId = id;
-    localStorage.setItem("deviceId", id);
-    $("devBtn").textContent = id;
-    loadUserDevices();
-    refresh();
-    loadSchedule();
-  }
-  window.selectDevice = selectDevice;
-
-  async function refresh(){
-    if(!currentDeviceId){ setConn("wait","pick a screen"); return; }
-    try{
-      const d = await api("/api/user/device/" + encodeURIComponent(currentDeviceId) + "/display");
-      if(!d){ return; }
-      const pct = Math.round((d.brightness||0)*100);
-      $("brightVal").textContent = pct + "%";
-      $("brightFill").style.width = pct + "%";
-      const modes = d.allowed_modes || [];
-      $("modes").innerHTML = modes.length
-        ? modes.map(m=>'<span class="chip">'+m+'</span>').join("")
-        : '<span class="chip">none</span>';
-      $("activeMsg").textContent = d.message ? '"'+d.message+'"' : "none";
-      setConn("on","live");
-    } catch(e){ setConn("wait","server waking…"); }
-  }
-
-  async function sendMessage(){
-    const text = $("msg").value.trim();
-    if(!text){ toast("Type a message first", true); return; }
-    if(!currentDeviceId){ toast("Select a screen first", true); return; }
-    $("sendBtn").disabled = true;
-    const res = await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{
-      method:"POST", body: JSON.stringify({message: text})
-    });
-    if(res?.ok){ toast("Sent!"); $("msg").value=""; $("count").textContent="0"; refresh(); }
-    else toast("Failed", true);
-    $("sendBtn").disabled = false;
-  }
-
-  async function clearMessage(){
-    if(!currentDeviceId){ toast("Select a screen first", true); return; }
-    const res = await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{
-      method:"POST", body: JSON.stringify({message: ""})
-    });
-    if(res?.ok){ toast("Cleared"); refresh(); }
-    else toast("Failed", true);
-  }
-
-  async function reboot(){
-    if(!currentDeviceId){ toast("Select a screen first", true); return; }
-    if(!confirm("Restart this screen now?")) return;
-    const res = await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{
-      method:"POST", body: JSON.stringify({reboot: true})
-    });
-    if(res?.ok) toast("Restart sent");
-    else toast("Failed", true);
-  }
-
-  async function pair(){
-    const code = $("pairCode").value.trim().toUpperCase();
-    if(code.length < 4){ toast("Enter the code from the screen", true); return; }
-    $("pairBtn").disabled = true;
-    const res = await api("/api/user/pair",{
-      method:"POST", body: JSON.stringify({code})
-    });
-    if(res?.ok){
-      toast("Paired! Now controlling " + res.device_id);
-      $("pairCode").value = "";
-      currentDeviceId = res.device_id;
-      localStorage.setItem("deviceId", currentDeviceId);
-      $("devBtn").textContent = currentDeviceId;
-      loadUserDevices(); refresh(); loadSchedule();
-    } else {
-      toast(res?.detail || "Pairing failed", true);
-    }
-    $("pairBtn").disabled = false;
-  }
-
-  // =====================================================================
-  // CATALOGUE
-  // =====================================================================
-  let catalogue = [];
-
-  async function loadCatalogue(){
-    const items = await api("/api/catalogue");
-    if(!items) return;
-    catalogue = items;
-    renderCatalogue();
-  }
-
-  const TYPE_LABELS = {trains:"Trains",weather:"Weather",clock:"Clock",message:"Message",animation:"Animation"};
-
-  function renderCatalogue(){
-    const grid = $("catalogueGrid");
-    if(!catalogue.length){
-      grid.innerHTML = '<div style="color:var(--dim);font-size:14px;grid-column:1/-1">No items yet.</div>';
-      return;
-    }
-    grid.innerHTML = catalogue.map(item => `
-      <div class="cat-card">
-        ${item.is_builtin ? '<span class="cat-lock">🔒</span>' : ''}
-        <div class="cat-name">${esc(item.name)}</div>
-        <div class="cat-type">
-          <span class="type-badge type-${item.type}">${TYPE_LABELS[item.type]||item.type}</span>
+function renderSheetBoards(){
+  const el=$("sheetBoards"); el.innerHTML="";
+  _sheetBoards.forEach((b,i)=>{
+    const d=document.createElement("div"); d.className="board-row";
+    d.innerHTML=`
+      <button class="rm-btn" onclick="rmBoard(${i})">×</button>
+      <div class="br-label">Row ${i+1}</div>
+      <div class="fr"><label>Badge</label>
+        <input maxlength="3" value="${esc(b.badge)}" style="width:52px;flex:none"
+          oninput="window._sheetBoards[${i}].badge=this.value.toUpperCase();this.value=this.value.toUpperCase()">
+        <input type="color" value="${colToHex(b.badge_col)}" class="colour-swatch" style="flex:none"
+          oninput="_sheetBoards[${i}].badge_col=hexToCol(this.value)">
+      </div>
+      <div class="fr"><label>Station</label>
+        <div style="flex:1;position:relative">
+          <input id="stn_${i}" placeholder="Search…" value="${esc(b._n||b.station||"")}"
+            oninput="stnSearch(${i},this.value)" autocomplete="off">
+          <div class="station-results" id="sres_${i}"></div>
         </div>
-        <div class="cat-actions">
-          ${!item.is_builtin ? `<button class="secondary" onclick="openEditSheet('${item.id}')">Edit</button>` : ''}
-          <button class="secondary" onclick="duplicateItem('${item.id}')">Copy</button>
-          ${!item.is_builtin ? `<button class="danger" onclick="deleteItem('${item.id}')">Del</button>` : ''}
-        </div>
-      </div>`).join("");
-  }
-
-  // ---- Item sheet state ----
-  let editingItemId = null;  // null = new item
-
-  function openNewSheet(){
-    editingItemId = null;
-    $("sheetTitle").textContent = "New item";
-    $("itemName").value = "";
-    $("itemType").value = "trains";
-    renderItemFields();
-    $("itemOverlay").classList.add("open");
-    $("itemSheet").classList.add("open");
-  }
-
-  function openEditSheet(id){
-    const item = catalogue.find(i => i.id === id);
-    if(!item) return;
-    editingItemId = id;
-    $("sheetTitle").textContent = "Edit: " + item.name;
-    $("itemName").value = item.name;
-    $("itemType").value = item.type;
-    renderItemFields(item.config || {});
-    $("itemOverlay").classList.add("open");
-    $("itemSheet").classList.add("open");
-  }
-  window.openEditSheet = openEditSheet;
-
-  function closeItemSheet(){
-    $("itemOverlay").classList.remove("open");
-    $("itemSheet").classList.remove("open");
-  }
-  window.closeItemSheet = closeItemSheet;
-
-  function renderItemFields(cfg){
-    cfg = cfg || {};
-    const type = $("itemType").value;
-    const el = $("itemFields");
-
-    if(type === "trains"){
-      const boards = cfg.boards || [];
-      el.innerHTML = `
-        <div style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;font-weight:600">Train rows (up to 3)</div>
-        <div id="sheetBoards"></div>
-        <button class="secondary" id="sheetAddBoard" style="margin-top:4px;font-size:13px;padding:10px">+ Add row</button>`;
-      window._sheetBoards = boards.length ? JSON.parse(JSON.stringify(boards))
-        : [{badge:"",badge_col:[150,0,0],station:"",match:[],_stationName:""}];
-      renderSheetBoards();
-      $("sheetAddBoard").onclick = () => {
-        if(window._sheetBoards.length >= 3){ toast("Max 3 rows",true); return; }
-        window._sheetBoards.push({badge:"",badge_col:[80,80,80],station:"",match:[],_stationName:""});
-        renderSheetBoards();
-      };
-    } else if(type === "weather"){
-      el.innerHTML = `<div style="color:var(--dim);font-size:14px;padding:8px 0">Weather uses the server's default location. Location per device is coming soon.</div>`;
-    } else if(type === "clock"){
-      const color = colToHex(cfg.color || [255,255,255]);
-      const fmt = cfg.format || "24h";
-      el.innerHTML = `
-        <div class="field-row"><label>Colour</label>
-          <input type="color" id="clockColor" value="${color}" class="colour-swatch" style="flex:none"></div>
-        <div class="field-row"><label>Format</label>
-          <select id="clockFormat">
-            <option value="24h" ${fmt==="24h"?"selected":""}>24-hour</option>
-            <option value="12h" ${fmt==="12h"?"selected":""}>12-hour</option>
-          </select></div>`;
-    } else if(type === "message"){
-      el.innerHTML = `
-        <div class="field">
-          <label class="field-label">Default text (shown when no active message is set)</label>
-          <textarea id="msgText" maxlength="160" placeholder="Leave blank to show nothing by default">${esc(cfg.text||"")}</textarea>
-        </div>`;
-    } else if(type === "animation"){
-      el.innerHTML = `
-        <div class="field">
-          <label class="field-label">Animation URL (.bin file)</label>
-          <input id="animUrl" type="url" placeholder="https://…" value="${esc(cfg.url||"")}">
-        </div>`;
-    }
-  }
-  window.renderItemFields = renderItemFields;
-
-  function colToHex(arr){ return "#"+(arr||[0,0,0]).map(v=>v.toString(16).padStart(2,"0")).join(""); }
-  function hexToCol(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
-  function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-
-  function renderSheetBoards(){
-    const el = $("sheetBoards");
-    el.innerHTML = "";
-    (window._sheetBoards||[]).forEach((b,i) => {
-      const div = document.createElement("div");
-      div.className = "board-row";
-      div.innerHTML = `
-        <button class="remove-btn" onclick="removeSheetBoard(${i})">×</button>
-        <h3>Row ${i+1}</h3>
-        <div class="field-row">
-          <label>Badge</label>
-          <input maxlength="3" value="${esc(b.badge)}" oninput="window._sheetBoards[${i}].badge=this.value.toUpperCase();this.value=this.value.toUpperCase()" style="width:56px;flex:none">
-          <input type="color" value="${colToHex(b.badge_col)}" oninput="window._sheetBoards[${i}].badge_col=hexToCol(this.value)" class="colour-swatch" style="flex:none">
-        </div>
-        <div class="field-row">
-          <label>Station</label>
-          <div style="flex:1;position:relative">
-            <input id="sb_stn_${i}" placeholder="Search station…" value="${esc(b._stationName||b.station||"")}" oninput="sbSearchStation(${i},this.value)" autocomplete="off">
-            <div class="station-results" id="sb_res_${i}"></div>
-          </div>
-        </div>
-        <div class="field-row">
-          <label>Destinations</label>
-          <input value="${esc((b.match||[]).join(", "))}" placeholder="e.g. London Bridge" oninput="window._sheetBoards[${i}].match=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
-        </div>`;
-      el.appendChild(div);
-    });
-  }
-
-  window.removeSheetBoard = function(i){ window._sheetBoards.splice(i,1); renderSheetBoards(); };
-
-  let _sbTimers = {};
-  window.sbSearchStation = async function(idx, val){
-    clearTimeout(_sbTimers[idx]);
-    const res = $("sb_res_"+idx);
-    if(val.length < 2){ res.style.display="none"; return; }
-    _sbTimers[idx] = setTimeout(async()=>{
-      const results = await fetch("/api/stations?q="+encodeURIComponent(val)).then(r=>r.json()).catch(()=>[]);
-      res.innerHTML = results.map(s=>`<div class="station-result" onclick="sbSelectStation(${idx},'${s.c}','${s.n.replace(/'/g,"\\'")}')">
-        ${esc(s.n)}<span class="crs">${s.c}</span></div>`).join("") || '<div class="station-result" style="color:var(--dim)">No results</div>';
-      res.style.display = "block";
-    }, 250);
-  };
-
-  window.sbSelectStation = function(idx, crs, name){
-    window._sheetBoards[idx].station = crs;
-    window._sheetBoards[idx]._stationName = name;
-    $("sb_stn_"+idx).value = name;
-    $("sb_res_"+idx).style.display = "none";
-  };
-
-  function collectItemConfig(){
-    const type = $("itemType").value;
-    if(type === "trains"){
-      return {boards: (window._sheetBoards||[]).map(b => ({
-        badge: b.badge, badge_col: b.badge_col, station: b.station, match: b.match
-      }))};
-    } else if(type === "clock"){
-      return {color: hexToCol($("clockColor").value), format: $("clockFormat").value};
-    } else if(type === "message"){
-      return {text: $("msgText").value.trim()};
-    } else if(type === "animation"){
-      return {url: $("animUrl").value.trim()};
-    }
-    return {};
-  }
-
-  async function saveItem(){
-    const name = $("itemName").value.trim();
-    if(!name){ toast("Enter a name", true); return; }
-    $("saveItemBtn").disabled = true;
-    const body = {name, type: $("itemType").value, config: collectItemConfig()};
-    let res;
-    if(editingItemId){
-      res = await api("/api/catalogue/"+encodeURIComponent(editingItemId),{
-        method:"PATCH", body: JSON.stringify({name: body.name, config: body.config})
-      });
-    } else {
-      res = await api("/api/catalogue",{method:"POST", body: JSON.stringify(body)});
-    }
-    $("saveItemBtn").disabled = false;
-    if(res?.ok || res?.id){
-      toast(editingItemId ? "Saved" : "Created");
-      closeItemSheet();
-      await loadCatalogue();
-    } else {
-      toast(res?.detail || "Failed", true);
-    }
-  }
-
-  async function duplicateItem(id){
-    const item = catalogue.find(i => i.id === id);
-    if(!item) return;
-    const res = await api("/api/catalogue",{
-      method:"POST",
-      body: JSON.stringify({name:"Copy of "+item.name, type:item.type, config:item.config||{}})
-    });
-    if(res?.id){ toast("Duplicated"); await loadCatalogue(); }
-    else toast("Failed", true);
-  }
-  window.duplicateItem = duplicateItem;
-
-  async function deleteItem(id){
-    if(!confirm("Delete this item?")) return;
-    const res = await api("/api/catalogue/"+encodeURIComponent(id),{method:"DELETE"});
-    if(res?.ok){ toast("Deleted"); await loadCatalogue(); }
-    else toast(res?.detail||"Failed", true);
-  }
-  window.deleteItem = deleteItem;
-
-  // =====================================================================
-  // SCHEDULE
-  // =====================================================================
-  let draftBands = [];   // [{catalogue_item_id, start_hour, brightness, day_mask, sort_order, _item}]
-  let editingBandIdx = null;
-
-  async function loadSchedule(){
-    if(!currentDeviceId) return;
-    const bands = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule");
-    draftBands = (bands || []).map((b,i) => ({...b, sort_order: i}));
-    renderScheduleBands();
-  }
-
-  function renderScheduleBands(){
-    const el = $("scheduleBands");
-    if(!draftBands.length){
-      el.innerHTML = '<div style="color:var(--dim);font-size:14px">No bands yet — using built-in schedule.</div>';
-      return;
-    }
-    el.innerHTML = draftBands.map((b,i) => {
-      const item = b.catalogue_item || catalogue.find(c => c.id === b.catalogue_item_id);
-      const name = item ? item.name : "(unknown)";
-      const type = item ? item.type : "";
-      return `<div class="band-row">
-        <div class="band-header">
-          <span class="band-time">${String(b.start_hour||0).padStart(2,"0")}:00</span>
-          <span class="band-item-name">
-            ${name}
-            ${type ? `<span class="type-badge type-${type}" style="margin-left:6px">${TYPE_LABELS[type]||type}</span>` : ""}
-          </span>
-          <span class="band-bright">${Math.round((b.brightness||1)*100)}%</span>
-        </div>
-        <div class="band-controls">
-          <button class="secondary" onclick="moveBand(${i},-1)" ${i===0?"disabled":""}>↑</button>
-          <button class="secondary" onclick="moveBand(${i},1)" ${i===draftBands.length-1?"disabled":""}>↓</button>
-          <button class="secondary" onclick="openBandSheet(${i})">Edit</button>
-          <button class="secondary" onclick="dupBand(${i})">Copy</button>
-          <button class="danger" onclick="removeBand(${i})">Del</button>
-        </div>
+      </div>
+      <div class="fr"><label>Destinations</label>
+        <input value="${esc((b.match||[]).join(", "))}" placeholder="e.g. London Bridge"
+          oninput="_sheetBoards[${i}].match=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
       </div>`;
-    }).join("");
-  }
-
-  function moveBand(i, dir){
-    const j = i + dir;
-    if(j < 0 || j >= draftBands.length) return;
-    [draftBands[i], draftBands[j]] = [draftBands[j], draftBands[i]];
-    renderScheduleBands();
-  }
-  window.moveBand = moveBand;
-
-  function dupBand(i){
-    const copy = {...draftBands[i]};
-    draftBands.splice(i+1, 0, copy);
-    renderScheduleBands();
-  }
-  window.dupBand = dupBand;
-
-  function removeBand(i){
-    draftBands.splice(i,1);
-    renderScheduleBands();
-  }
-  window.removeBand = removeBand;
-
-  function populateBandItemSelect(selectedId){
-    const sel = $("bandItem");
-    sel.innerHTML = catalogue.map(c =>
-      `<option value="${c.id}" ${c.id===selectedId?"selected":""}>${esc(c.name)} (${TYPE_LABELS[c.type]||c.type})</option>`
-    ).join("");
-  }
-
-  function openBandSheet(idx){
-    editingBandIdx = idx;
-    const b = draftBands[idx];
-    $("bandHour").value = b.start_hour || 0;
-    $("bandBright").value = Math.round((b.brightness||1)*100);
-    $("bandBrightLabel").textContent = $("bandBright").value + "%";
-    populateBandItemSelect(b.catalogue_item_id);
-    $("bandOverlay").classList.add("open");
-    $("bandSheet").classList.add("open");
-  }
-  window.openBandSheet = openBandSheet;
-
-  function openNewBandSheet(){
-    editingBandIdx = null;
-    $("bandHour").value = 0;
-    $("bandBright").value = 100;
-    $("bandBrightLabel").textContent = "100%";
-    populateBandItemSelect(null);
-    $("bandOverlay").classList.add("open");
-    $("bandSheet").classList.add("open");
-  }
-
-  function closeBandSheet(){
-    $("bandOverlay").classList.remove("open");
-    $("bandSheet").classList.remove("open");
-  }
-  window.closeBandSheet = closeBandSheet;
-
-  function saveBandSheet(){
-    const band = {
-      catalogue_item_id: $("bandItem").value,
-      start_hour: parseInt($("bandHour").value),
-      brightness: parseInt($("bandBright").value) / 100,
-      day_mask: 127,
-      sort_order: 0,
-    };
-    const item = catalogue.find(c => c.id === band.catalogue_item_id);
-    if(item) band.catalogue_item = item;
-    if(editingBandIdx !== null){
-      draftBands[editingBandIdx] = band;
-    } else {
-      draftBands.push(band);
-    }
-    closeBandSheet();
-    renderScheduleBands();
-  }
-
-  async function saveSchedule(){
-    if(!currentDeviceId){ toast("Select a screen first",true); return; }
-    $("saveScheduleBtn").disabled = true;
-    const bands = draftBands.map((b,i) => ({
-      catalogue_item_id: b.catalogue_item_id,
-      start_hour: b.start_hour,
-      brightness: b.brightness,
-      day_mask: b.day_mask || 127,
-      sort_order: i,
-    }));
-    const res = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule",{
-      method:"POST", body: JSON.stringify({bands})
-    });
-    $("saveScheduleBtn").disabled = false;
-    if(res?.ok){ toast("Schedule saved"); refresh(); }
-    else toast(res?.detail||"Failed",true);
-  }
-
-  // ---- Wire up ----
-  $("authBtn").addEventListener("click", doAuth);
-  $("msg").addEventListener("input", e => $("count").textContent = e.target.value.length);
-  $("sendBtn").addEventListener("click", sendMessage);
-  $("clearBtn").addEventListener("click", clearMessage);
-  $("rebootBtn").addEventListener("click", reboot);
-  $("pairBtn").addEventListener("click", pair);
-  $("newItemBtn").addEventListener("click", openNewSheet);
-  $("saveItemBtn").addEventListener("click", saveItem);
-  $("addBandBtn").addEventListener("click", openNewBandSheet);
-  $("saveBandBtn").addEventListener("click", saveBandSheet);
-  $("saveScheduleBtn").addEventListener("click", saveSchedule);
-
-  $("devBtn").addEventListener("click", () => {
-    const v = prompt("Device ID", currentDeviceId);
-    if(v && v.trim()) selectDevice(v.trim());
+    el.appendChild(d);
   });
+}
+window.rmBoard=function(i){_sheetBoards.splice(i,1);renderSheetBoards();};
 
-  [$("authEmail"),$("authPassword"),$("authConfirm")].forEach(el => {
-    if(el) el.addEventListener("keydown", e => { if(e.key === "Enter") doAuth(); });
-  });
+let _stnTimers={};
+window.stnSearch=async function(idx,val){
+  clearTimeout(_stnTimers[idx]);
+  const r=$("sres_"+idx);
+  if(val.length<2){r.style.display="none";return;}
+  _stnTimers[idx]=setTimeout(async()=>{
+    const res=await fetch("/api/stations?q="+encodeURIComponent(val)).then(r=>r.json()).catch(()=>[]);
+    r.innerHTML=res.map(s=>`<div class="station-result" onclick="stnPick(${idx},'${s.c}','${s.n.replace(/'/g,"\\'")}')">
+      ${esc(s.n)}<span class="crs">${s.c}</span></div>`).join("")
+      ||'<div class="station-result" style="color:var(--dim)">No results</div>';
+    r.style.display="block";
+  },250);
+};
+window.stnPick=function(idx,crs,name){
+  _sheetBoards[idx].station=crs; _sheetBoards[idx]._n=name;
+  $("stn_"+idx).value=name; $("sres_"+idx).style.display="none";
+};
 
-  // ---- Boot ----
-  if(token){
-    fetch(SB_URL+"/auth/v1/user",{headers:{"Authorization":"Bearer "+token,"apikey":SB_ANON}})
-      .then(r => r.ok ? r.json() : null)
-      .then(user => {
-        if(user){ showMain(user); }
-        else { token=""; localStorage.removeItem("sb_token"); }
-      }).catch(() => {});
+function collectScreenConfig(){
+  const type=$("screenType").value;
+  if(type==="trains") return {boards:_sheetBoards.map(b=>({badge:b.badge,badge_col:b.badge_col,station:b.station,match:b.match}))};
+  if(type==="clock") return {color:hexToCol($("clockCol").value),format:$("clockFmt").value};
+  if(type==="message") return {text:$("msgText").value.trim()};
+  if(type==="animation") return {url:$("animUrl").value.trim()};
+  return {};
+}
+
+async function saveScreen(){
+  const name=$("screenName").value.trim();
+  if(!name){toast("Enter a name",true);return;}
+  $("saveScreenBtn").disabled=true;
+  const body={name,type:$("screenType").value,config:collectScreenConfig()};
+  let r;
+  if(editingScreenId){
+    r=await api("/api/screens/"+encodeURIComponent(editingScreenId),{method:"PATCH",body:JSON.stringify({name:body.name,config:body.config})});
+  }else{
+    r=await api("/api/screens",{method:"POST",body:JSON.stringify(body)});
   }
+  $("saveScreenBtn").disabled=false;
+  if(r?.ok||r?.id){toast(editingScreenId?"Saved":"Created");closeScreenSheet();await loadScreens();}
+  else toast(r?.detail||"Failed",true);
+}
+
+async function dupScreen(id){
+  const s=screens.find(x=>x.id===id); if(!s)return;
+  const r=await api("/api/screens",{method:"POST",body:JSON.stringify({name:"Copy of "+s.name,type:s.type,config:s.config||{}})});
+  if(r?.id){toast("Duplicated");await loadScreens();}else toast("Failed",true);
+}
+window.dupScreen=dupScreen;
+async function delScreen(id){
+  if(!confirm("Delete this screen?"))return;
+  const r=await api("/api/screens/"+encodeURIComponent(id),{method:"DELETE"});
+  if(r?.ok){toast("Deleted");await loadScreens();}else toast(r?.detail||"Failed",true);
+}
+window.delScreen=delScreen;
+
+// ═══════════════════════════════════════════════════════════════════
+// CATALOGUES
+// ═══════════════════════════════════════════════════════════════════
+let catalogues=[];       // [{id, name, is_builtin, screens:[{id,screen,duration_seconds,sort_order}]}]
+let _addSlotCatId=null;  // catalogue we're adding a slot to
+let _catDrafts={};       // {catId: [{screen_id, duration_seconds, sort_order, _screen}]}
+
+async function loadCatalogues(){
+  const c=await api("/api/catalogues"); if(!c)return;
+  catalogues=c;
+  _catDrafts={};
+  for(const cat of catalogues){
+    _catDrafts[cat.id]=JSON.parse(JSON.stringify(cat.screens||[]));
+  }
+  renderCatalogues();
+}
+
+function renderCatalogues(){
+  const el=$("catalogueList");
+  if(!catalogues.length){el.innerHTML='<div style="color:var(--dim);font-size:14px">No catalogues yet.</div>';return;}
+  el.innerHTML=catalogues.map(cat=>`
+    <div class="cat-item" id="catitem_${cat.id}">
+      <div class="cat-item-header" onclick="toggleCat('${cat.id}',this)">
+        <span class="cat-name">${esc(cat.name)}${cat.is_builtin?' 🔒':''}</span>
+        <span class="cat-count">${(cat.screens||[]).length} screen${(cat.screens||[]).length===1?'':'s'}</span>
+        <div style="display:flex;gap:5px;flex-shrink:0" onclick="event.stopPropagation()">
+          <button class="sm secondary" onclick="dupCat('${cat.id}')">Copy</button>
+          ${!cat.is_builtin?`<button class="sm danger" onclick="delCat('${cat.id}')">Del</button>`:''}
+        </div>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="cat-item-body" id="catbody_${cat.id}">
+        <div id="catslots_${cat.id}"></div>
+        <div class="cat-footer">
+          <button class="sm secondary" onclick="openAddSlot('${cat.id}')">+ Add screen</button>
+          <button class="sm" onclick="saveCatSlots('${cat.id}')">Save order & durations</button>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+function toggleCat(id,hdr){
+  const body=$("catbody_"+id);
+  const open=body.classList.toggle("open");
+  hdr.classList.toggle("open",open);
+  if(open)renderCatSlots(id);
+}
+window.toggleCat=toggleCat;
+
+function renderCatSlots(catId){
+  const el=$("catslots_"+catId);
+  const slots=_catDrafts[catId]||[];
+  if(!slots.length){
+    el.innerHTML='<div style="color:var(--dim);font-size:13px;padding:10px 12px">No screens yet — add one below.</div>';
+    return;
+  }
+  el.innerHTML=slots.map((slot,i)=>{
+    const screen=slot.screen||screens.find(s=>s.id===slot.screen_id)||{};
+    return `<div class="cat-screen-slot">
+      <span class="css-name">${esc(screen.name||"Unknown")}
+        ${screen.type?`<span class="type-badge type-${screen.type}" style="margin-left:6px">${TYPE_LABEL[screen.type]||""}</span>`:""}
+      </span>
+      <div class="css-dur">
+        <input type="number" min="1" max="300" value="${slot.duration_seconds||10}"
+          oninput="_catDrafts['${catId}'][${i}].duration_seconds=parseInt(this.value)||10">
+        <span>s</span>
+      </div>
+      <div class="cat-slot-actions">
+        <button class="sm secondary" onclick="moveSlot('${catId}',${i},-1)" ${i===0?"disabled":""}>↑</button>
+        <button class="sm secondary" onclick="moveSlot('${catId}',${i},1)" ${i===slots.length-1?"disabled":""}>↓</button>
+        <button class="sm danger" onclick="rmSlot('${catId}',${i})">×</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+window.moveSlot=function(catId,i,dir){
+  const s=_catDrafts[catId]; const j=i+dir;
+  if(j<0||j>=s.length)return;
+  [s[i],s[j]]=[s[j],s[i]]; renderCatSlots(catId);
+};
+window.rmSlot=function(catId,i){
+  _catDrafts[catId].splice(i,1); renderCatSlots(catId);
+};
+
+async function saveCatSlots(catId){
+  const slots=(_catDrafts[catId]||[]).map((s,i)=>({
+    screen_id:s.screen_id||s.screen?.id, duration_seconds:s.duration_seconds||10, sort_order:i
+  }));
+  const r=await api("/api/catalogues/"+encodeURIComponent(catId)+"/screens",{
+    method:"PUT",body:JSON.stringify({slots})
+  });
+  if(r?.ok){toast("Saved");await loadCatalogues();}else toast(r?.detail||"Failed",true);
+}
+window.saveCatSlots=saveCatSlots;
+
+async function newCatalogue(){
+  const name=prompt("Catalogue name:","New catalogue"); if(!name?.trim())return;
+  const r=await api("/api/catalogues",{method:"POST",body:JSON.stringify({name:name.trim()})});
+  if(r?.id){toast("Created");await loadCatalogues();}else toast(r?.detail||"Failed",true);
+}
+async function dupCat(id){
+  const cat=catalogues.find(c=>c.id===id); if(!cat)return;
+  const r=await api("/api/catalogues",{method:"POST",body:JSON.stringify({name:"Copy of "+cat.name})});
+  if(!r?.id){toast("Failed",true);return;}
+  // copy slots
+  const slots=(cat.screens||[]).map((s,i)=>({screen_id:s.screen_id||s.screen?.id,duration_seconds:s.duration_seconds||10,sort_order:i}));
+  await api("/api/catalogues/"+r.id+"/screens",{method:"PUT",body:JSON.stringify({slots})});
+  toast("Duplicated"); await loadCatalogues();
+}
+window.dupCat=dupCat;
+async function delCat(id){
+  if(!confirm("Delete this catalogue?"))return;
+  const r=await api("/api/catalogues/"+encodeURIComponent(id),{method:"DELETE"});
+  if(r?.ok){toast("Deleted");await loadCatalogues();}else toast(r?.detail||"Failed",true);
+}
+window.delCat=delCat;
+
+// Add screen to catalogue sheet
+function openAddSlot(catId){
+  _addSlotCatId=catId;
+  const sel=$("slotScreen");
+  sel.innerHTML=screens.map(s=>`<option value="${s.id}">${esc(s.name)} (${TYPE_LABEL[s.type]||s.type})</option>`).join("");
+  $("slotDur").value=10; $("slotDurLabel").textContent="10s";
+  openSheet("addSlot");
+}
+window.openAddSlot=openAddSlot;
+function closeAddSlotSheet(){closeSheet("addSlot");}
+window.closeAddSlotSheet=closeAddSlotSheet;
+
+function addSlotTocat(){
+  const screenId=$("slotScreen").value;
+  const dur=parseInt($("slotDur").value)||10;
+  const screen=screens.find(s=>s.id===screenId);
+  const draft=_catDrafts[_addSlotCatId]||[];
+  draft.push({screen_id:screenId,duration_seconds:dur,sort_order:draft.length,screen});
+  _catDrafts[_addSlotCatId]=draft;
+  // re-render if expanded
+  if($("catbody_"+_addSlotCatId)?.classList.contains("open"))renderCatSlots(_addSlotCatId);
+  closeAddSlotSheet();
+  toast("Added — save to keep");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCHEDULE
+// ═══════════════════════════════════════════════════════════════════
+let draftBands=[];  // [{catalogue_id, end_hour, brightness, sort_order, _cat}]
+let editingBandIdx=null;
+
+async function loadSchedule(){
+  if(!currentDeviceId)return;
+  const bands=await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule");
+  draftBands=(bands||[]).map((b,i)=>({...b,sort_order:i}));
+  renderSchedule();
+}
+
+function renderSchedule(){
+  const el=$("schedStack");
+  if(!draftBands.length){
+    el.innerHTML='<div class="sched-midnight">00:00 · no slots · using built-in schedule</div>';
+    return;
+  }
+  let html='<div class="sched-midnight">00:00 (midnight)</div>';
+  let start=0;
+  draftBands.forEach((b,i)=>{
+    const cat=b.catalogue||catalogues.find(c=>c.id===b.catalogue_id)||{};
+    const end=b.end_hour===0?24:b.end_hour;
+    const bright=Math.round((b.brightness||1)*100);
+    html+=`<div class="sched-band">
+      <span class="sb-time">${String(start).padStart(2,"0")}:00</span>
+      <span class="sb-name">${esc(cat.name||"Unknown catalogue")}</span>
+      <span class="sb-bright">${bright}%</span>
+      <div class="sb-actions">
+        <button class="sm secondary" onclick="moveBand(${i},-1)" ${i===0?"disabled":""}>↑</button>
+        <button class="sm secondary" onclick="moveBand(${i},1)" ${i===draftBands.length-1?"disabled":""}>↓</button>
+        <button class="sm secondary" onclick="openBandSheet(${i})">Edit</button>
+        <button class="sm danger" onclick="rmBand(${i})">×</button>
+      </div>
+    </div>`;
+    start=end;
+  });
+  html+=`<div class="sched-midnight">00:00 (midnight)</div>`;
+  el.innerHTML=html;
+}
+
+window.moveBand=function(i,dir){
+  const j=i+dir; if(j<0||j>=draftBands.length)return;
+  [draftBands[i],draftBands[j]]=[draftBands[j],draftBands[i]]; renderSchedule();
+};
+window.rmBand=function(i){ draftBands.splice(i,1); renderSchedule(); };
+
+function populateBandCatSelect(selectedId){
+  $("bandCat").innerHTML=catalogues.map(c=>`<option value="${c.id}" ${c.id===selectedId?"selected":""}>${esc(c.name)}</option>`).join("");
+}
+function populateBandEndSelect(selectedHour){
+  const opts=[0,...Array.from({length:23},(_,i)=>i+1)];
+  $("bandEnd").innerHTML=opts.map(h=>`<option value="${h}" ${h===selectedHour?"selected":""}>${fmtHour(h)}</option>`).join("");
+}
+
+function openNewBandSheet(){
+  editingBandIdx=null;
+  populateBandCatSelect(null); populateBandEndSelect(9);
+  $("bandBright").value=100; $("bandBrightLabel").textContent="100%";
+  openSheet("band");
+}
+function openBandSheet(idx){
+  editingBandIdx=idx; const b=draftBands[idx];
+  populateBandCatSelect(b.catalogue_id); populateBandEndSelect(b.end_hour||0);
+  const bright=Math.round((b.brightness||1)*100);
+  $("bandBright").value=bright; $("bandBrightLabel").textContent=bright+"%";
+  openSheet("band");
+}
+window.openBandSheet=openBandSheet;
+function closeBandSheet(){closeSheet("band");}
+window.closeBandSheet=closeBandSheet;
+
+function saveBandSheet(){
+  const catId=$("bandCat").value;
+  const cat=catalogues.find(c=>c.id===catId);
+  const band={catalogue_id:catId,end_hour:parseInt($("bandEnd").value),
+    brightness:parseInt($("bandBright").value)/100,sort_order:0,catalogue:cat};
+  if(editingBandIdx!==null) draftBands[editingBandIdx]=band;
+  else draftBands.push(band);
+  closeBandSheet(); renderSchedule();
+}
+
+async function saveSchedule(){
+  if(!currentDeviceId){toast("Select a screen first",true);return;}
+  $("saveSchedBtn").disabled=true;
+  const bands=draftBands.map((b,i)=>({catalogue_id:b.catalogue_id,end_hour:b.end_hour,brightness:b.brightness,sort_order:i}));
+  const r=await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule",{
+    method:"POST",body:JSON.stringify({bands})
+  });
+  $("saveSchedBtn").disabled=false;
+  if(r?.ok){toast("Schedule saved");refresh();}else toast(r?.detail||"Failed",true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Sheet helpers
+// ═══════════════════════════════════════════════════════════════════
+function openSheet(name){
+  $(name+"Overlay").classList.add("open");
+  $(name+"Sheet").classList.add("open");
+}
+function closeSheet(name){
+  $(name+"Overlay").classList.remove("open");
+  $(name+"Sheet").classList.remove("open");
+}
+
+// ── Wire up ───────────────────────────────────────────────────────
+$("authBtn").addEventListener("click",doAuth);
+$("msg").addEventListener("input",e=>$("count").textContent=e.target.value.length);
+$("sendBtn").addEventListener("click",sendMessage);
+$("clearBtn").addEventListener("click",clearMessage);
+$("rebootBtn").addEventListener("click",reboot);
+$("pairBtn").addEventListener("click",pair);
+$("newScreenBtn").addEventListener("click",openNewScreenSheet);
+$("saveScreenBtn").addEventListener("click",saveScreen);
+$("newCatBtn").addEventListener("click",newCatalogue);
+$("addBandBtn").addEventListener("click",openNewBandSheet);
+$("saveBandBtn").addEventListener("click",saveBandSheet);
+$("addSlotBtn").addEventListener("click",addSlotTocat);
+$("saveSchedBtn").addEventListener("click",saveSchedule);
+$("devBtn").addEventListener("click",()=>{ const v=prompt("Device ID",currentDeviceId); if(v?.trim())selectDevice(v.trim()); });
+[$("authEmail"),$("authPassword"),$("authConfirm")].forEach(el=>{
+  if(el)el.addEventListener("keydown",e=>{if(e.key==="Enter")doAuth();});
+});
+
+// ── Boot ─────────────────────────────────────────────────────────
+if(token){
+  fetch(SB_URL+"/auth/v1/user",{headers:{"Authorization":"Bearer "+token,"apikey":SB_ANON}})
+    .then(r=>r.ok?r.json():null)
+    .then(user=>{ if(user)showMain(user); else{token="";localStorage.removeItem("sb_token");} })
+    .catch(()=>{});
+}
 })();
 </script>
 </body>
