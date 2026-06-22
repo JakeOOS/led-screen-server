@@ -68,6 +68,29 @@ DEFAULT_SCHEDULE = [
     {"start": 0,  "brightness": 0.2, "modes": ["TRAINS", "WEATHER", "PHONE", "ANIM", "CLOCK"]},
 ]
 
+BUILTIN_ITEMS = [
+    {"name": "Morning trains", "type": "trains",
+     "config": {"boards": DEFAULT_BOARDS}, "is_builtin": True, "owner_id": None},
+    {"name": "Weather",        "type": "weather",
+     "config": {}, "is_builtin": True, "owner_id": None},
+    {"name": "Clock",          "type": "clock",
+     "config": {"color": [255, 255, 255], "format": "24h"}, "is_builtin": True, "owner_id": None},
+    {"name": "Message board",  "type": "message",
+     "config": {"text": ""}, "is_builtin": True, "owner_id": None},
+    {"name": "Animation",      "type": "animation",
+     "config": {"url": ""}, "is_builtin": True, "owner_id": None},
+]
+
+TYPE_MODES = {
+    "trains":    ["TRAINS"],
+    "weather":   ["WEATHER"],
+    "clock":     ["CLOCK"],
+    "message":   ["PHONE"],
+    "animation": ["ANIM"],
+}
+
+VALID_TYPES = set(TYPE_MODES.keys())
+
 # =====================================================================
 # --- Auth helpers ---
 # =====================================================================
@@ -236,6 +259,162 @@ def uk_tz_offset_seconds():
 
 
 # =====================================================================
+# --- Catalogue helpers ---
+# =====================================================================
+def get_catalogue_items(user_id=None):
+    if not SB_REST:
+        return [dict(i, id=str(k)) for k, i in enumerate(BUILTIN_ITEMS)]
+    items = []
+    try:
+        r = requests.get(_sb("/catalogue_items?is_builtin=eq.true&select=*&order=created_at.asc"),
+                         headers=SB_HEADERS_ADMIN, timeout=8)
+        if r.status_code == 200:
+            items.extend(r.json())
+        if user_id:
+            r = requests.get(
+                _sb(f"/catalogue_items?owner_id=eq.{user_id}&is_builtin=eq.false&select=*&order=created_at.asc"),
+                headers=SB_HEADERS_ADMIN, timeout=8)
+            if r.status_code == 200:
+                items.extend(r.json())
+    except Exception as e:
+        print("Catalogue get error:", e)
+    return items
+
+
+def create_catalogue_item(user_id, data):
+    row = {
+        "owner_id": user_id,
+        "name": data["name"],
+        "type": data["type"],
+        "config": data.get("config", {}),
+        "is_builtin": False,
+        "is_public": False,
+    }
+    if not SB_REST:
+        return dict(row, id="local-" + str(time.time()))
+    try:
+        h = dict(SB_HEADERS_ADMIN); h["Prefer"] = "return=representation"
+        r = requests.post(_sb("/catalogue_items"), headers=h, json=row, timeout=8)
+        if r.status_code in (200, 201) and r.json():
+            return r.json()[0]
+    except Exception as e:
+        print("Catalogue create error:", e)
+    return None
+
+
+def update_catalogue_item(item_id, user_id, data):
+    if not SB_REST:
+        return True
+    try:
+        h = dict(SB_HEADERS_ADMIN); h["Prefer"] = "return=minimal"
+        r = requests.patch(
+            _sb(f"/catalogue_items?id=eq.{item_id}&owner_id=eq.{user_id}&is_builtin=eq.false"),
+            headers=h, json=data, timeout=8)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print("Catalogue update error:", e)
+    return False
+
+
+def delete_catalogue_item(item_id, user_id):
+    if not SB_REST:
+        return True
+    try:
+        h = dict(SB_HEADERS_ADMIN)
+        r = requests.delete(
+            _sb(f"/catalogue_items?id=eq.{item_id}&owner_id=eq.{user_id}&is_builtin=eq.false"),
+            headers=h, timeout=8)
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print("Catalogue delete error:", e)
+    return False
+
+
+# =====================================================================
+# --- Schedule helpers ---
+# =====================================================================
+def get_device_schedule_bands(device_id):
+    if not SB_REST:
+        return []
+    try:
+        r = requests.get(
+            _sb(f"/device_schedule?device_id=eq.{device_id}"
+                f"&select=*,catalogue_item:catalogue_items!catalogue_item_id(*)"
+                f"&order=sort_order.asc"),
+            headers=SB_HEADERS_ADMIN, timeout=8)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print("Schedule get error:", e)
+    return []
+
+
+def save_device_schedule_bands(device_id, bands):
+    if not SB_REST:
+        return True
+    try:
+        h = dict(SB_HEADERS_ADMIN)
+        requests.delete(_sb(f"/device_schedule?device_id=eq.{device_id}"),
+                        headers=h, timeout=8)
+        if not bands:
+            return True
+        rows = [dict(b, device_id=device_id) for b in bands]
+        h2 = dict(SB_HEADERS_ADMIN); h2["Prefer"] = "return=minimal"
+        r = requests.post(_sb("/device_schedule"), headers=h2, json=rows, timeout=8)
+        return r.status_code in (200, 201)
+    except Exception as e:
+        print("Schedule save error:", e)
+    return False
+
+
+def get_active_catalogue_item(device_id):
+    """Return (brightness, catalogue_item) for the current hour, or None."""
+    try:
+        bands = get_device_schedule_bands(device_id)
+        if not bands:
+            return None
+        h = datetime.now(UK_TZ).hour
+        best = None
+        for band in bands:
+            s = band.get("start_hour", 0)
+            if s <= h and (best is None or s > best.get("start_hour", -1)):
+                best = band
+        if best is None:
+            best = max(bands, key=lambda b: b.get("start_hour", 0))
+        item = best.get("catalogue_item")
+        if not item:
+            return None
+        return best.get("brightness", 1.0), item
+    except Exception as e:
+        print("Active catalogue item error:", e)
+        return None
+
+
+def display_from_catalogue_item(item, brightness, dev):
+    """Build display response fields from a catalogue item."""
+    item_type = item.get("type", "clock")
+    cfg = item.get("config") or {}
+    resp = {
+        "brightness": brightness,
+        "allowed_modes": TYPE_MODES.get(item_type, ["CLOCK"]),
+        "trains": [],
+        "weather": [],
+        "message": current_message(dev),
+        "epoch": int(time.time()),
+        "tz_offset": uk_tz_offset_seconds(),
+    }
+    if item_type == "trains":
+        boards = cfg.get("boards") or DEFAULT_BOARDS
+        resp["trains"] = get_trains(boards)
+    elif item_type == "weather":
+        resp["weather"] = get_weather()
+    elif item_type == "message":
+        if not resp["message"]:
+            resp["message"] = cfg.get("text", "")
+    return resp
+
+
+# =====================================================================
 # --- Trains ---
 # =====================================================================
 _station_cache = {}
@@ -378,8 +557,6 @@ def get_weather():
 # =====================================================================
 @app.get("/api/device/{device_id}/display")
 def get_display(device_id: str, request: Request):
-    # Read the header directly from the raw request to avoid any ambiguity
-    # in FastAPI's parameter-name-to-header-name auto-conversion.
     incoming_secret = request.headers.get("x-device-secret", "")
     verify_device_secret(incoming_secret)
     dev = get_device(device_id)
@@ -399,6 +576,16 @@ def get_display(device_id: str, request: Request):
             "epoch": int(time.time()),
             "tz_offset": uk_tz_offset_seconds(),
         }
+
+    # Try catalogue-based schedule first
+    catalogue_result = get_active_catalogue_item(device_id)
+    if catalogue_result:
+        brightness, item = catalogue_result
+        resp = display_from_catalogue_item(item, brightness, dev)
+        resp.update({"paired": True, "reboot": reboot})
+        return resp
+
+    # Fall back to legacy flat-config schedule
     bright, allowed = schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
@@ -425,6 +612,14 @@ def get_display_for_user(device_id: str, authorization: str = Header(default="")
         raise HTTPException(status_code=403, detail="Not your device")
     if not dev.get("paired", False):
         return {"paired": False, "pair_code": dev.get("pair_code", "")}
+
+    catalogue_result = get_active_catalogue_item(device_id)
+    if catalogue_result:
+        brightness, item = catalogue_result
+        resp = display_from_catalogue_item(item, brightness, dev)
+        resp["paired"] = True
+        return resp
+
     bright, allowed = schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
@@ -521,6 +716,103 @@ def update_device(device_id: str, body: DeviceUpdate,
 
 
 # =====================================================================
+# --- Catalogue API ---
+# =====================================================================
+class CatalogueItemCreate(BaseModel):
+    name: str
+    type: str
+    config: dict = {}
+
+
+class CatalogueItemUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[dict] = None
+
+
+@app.get("/api/catalogue")
+def list_catalogue(authorization: str = Header(default="")):
+    """Return built-ins always; also return user's own items if authenticated."""
+    user_id = None
+    if authorization.startswith("Bearer "):
+        try:
+            user = verify_token(authorization)
+            user_id = user["id"]
+        except HTTPException:
+            pass
+    return get_catalogue_items(user_id)
+
+
+@app.post("/api/catalogue")
+def create_item(body: CatalogueItemCreate, authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    if body.type not in VALID_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid type. Must be one of: {', '.join(VALID_TYPES)}")
+    item = create_catalogue_item(user["id"], body.dict())
+    if not item:
+        raise HTTPException(status_code=500, detail="Failed to create item")
+    return item
+
+
+@app.patch("/api/catalogue/{item_id}")
+def update_item(item_id: str, body: CatalogueItemUpdate,
+                authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    data = {k: v for k, v in body.dict().items() if v is not None}
+    if not data:
+        return {"ok": True}
+    ok = update_catalogue_item(item_id, user["id"], data)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found or not your item")
+    return {"ok": True}
+
+
+@app.delete("/api/catalogue/{item_id}")
+def delete_item(item_id: str, authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    ok = delete_catalogue_item(item_id, user["id"])
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found or not your item")
+    return {"ok": True}
+
+
+# =====================================================================
+# --- Device schedule API ---
+# =====================================================================
+class ScheduleBand(BaseModel):
+    catalogue_item_id: str
+    start_hour: int
+    brightness: float = 1.0
+    day_mask: int = 127
+    sort_order: int = 0
+
+
+class ScheduleReplace(BaseModel):
+    bands: list[ScheduleBand]
+
+
+@app.get("/api/user/device/{device_id}/schedule")
+def get_schedule(device_id: str, authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    dev = get_device(device_id)
+    if dev.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your device")
+    return get_device_schedule_bands(device_id)
+
+
+@app.post("/api/user/device/{device_id}/schedule")
+def replace_schedule(device_id: str, body: ScheduleReplace,
+                     authorization: str = Header(default="")):
+    user = verify_token(authorization)
+    dev = get_device(device_id)
+    if dev.get("owner_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Not your device")
+    ok = save_device_schedule_bands(device_id, [b.dict() for b in body.bands])
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to save schedule")
+    return {"ok": True}
+
+
+# =====================================================================
 # --- Station search ---
 # =====================================================================
 _stations = []   # loaded lazily on first search
@@ -596,4 +888,3 @@ def root():
         "persistence": "supabase" if SB_REST else "in-memory",
         "device_secret_set": bool(DEVICE_SECRET),
     }
-
