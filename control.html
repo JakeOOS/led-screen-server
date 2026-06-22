@@ -28,10 +28,11 @@
   .chip{background:var(--card2);border:1px solid var(--line);color:var(--text);font-size:12px;padding:3px 9px;border-radius:999px}
   .bright-bar{height:8px;border-radius:999px;background:var(--card2);overflow:hidden;flex:1;margin-left:12px}
   .bright-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));width:0%}
-  input,textarea{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);
     border-radius:12px;padding:12px;font-size:16px;font-family:inherit}
-  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
   textarea{resize:none;min-height:74px}
+  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a94a6' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
   .count{color:var(--dim);font-size:12px;text-align:right;margin-top:6px}
   button{width:100%;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;
     color:#fff;background:var(--accent);margin-top:10px;cursor:pointer;font-family:inherit}
@@ -42,38 +43,13 @@
   button:disabled{opacity:.5}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));
     background:#fff;color:#0b0e14;padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;
-    opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+    opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:200}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
   .toast.err{background:var(--danger);color:#fff}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
   .dot.on{background:var(--good)}.dot.off{background:var(--danger)}.dot.wait{background:var(--warn)}
   .devlink{background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0;width:auto;margin:0;cursor:pointer}
   .muted{color:var(--dim);font-size:12px;margin-top:8px}
-  .section-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
-  .section-toggle .arrow{color:var(--dim);font-size:12px;transition:transform .2s}
-  .section-toggle.open .arrow{transform:rotate(90deg)}
-  .collapsible{display:none;margin-top:12px}
-  .collapsible.open{display:block}
-  .board-row{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;position:relative}
-  .board-row h3{font-size:13px;font-weight:600;margin:0 0 10px;color:var(--text)}
-  .field-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-  .field-row label{color:var(--dim);font-size:12px;min-width:60px}
-  .field-row input,.field-row select{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px;font-size:14px;font-family:inherit}
-  .field-row input:focus,.field-row select:focus{outline:none;border-color:var(--accent)}
-  .remove-btn{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--danger);font-size:18px;width:auto;margin:0;padding:0;cursor:pointer}
-  .colour-swatch{width:28px;height:28px;border-radius:6px;border:2px solid var(--line);cursor:pointer;flex-shrink:0}
-  .station-results{background:var(--card2);border:1px solid var(--line);border-radius:8px;margin-top:4px;max-height:160px;overflow-y:auto;display:none}
-  .station-result{padding:8px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
-  .station-result:last-child{border-bottom:none}
-  .station-result:hover{background:var(--card)}
-  .station-result .crs{color:var(--dim);font-size:11px;margin-left:6px}
-  .band-row{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
-  .band-row h3{font-size:13px;font-weight:600;margin:0 0 10px}
-  .mode-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-  .mode-chip{background:var(--bg);border:1px solid var(--line);color:var(--dim);font-size:12px;padding:4px 10px;border-radius:999px;cursor:pointer;user-select:none}
-  .mode-chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
-  .save-row{display:flex;gap:10px;margin-top:14px}
-  .save-row button{margin:0}
   .auth-logo{font-size:28px;font-weight:700;margin-bottom:4px}
   .auth-sub{color:var(--dim);font-size:14px;margin-bottom:32px}
   .auth-tab{display:flex;gap:0;background:var(--card2);border-radius:12px;padding:4px;margin-bottom:18px}
@@ -82,6 +58,65 @@
   .field-label{color:var(--dim);font-size:12px;margin-bottom:6px;display:block}
   .field{margin-bottom:14px}
   #mainScreen{display:none}
+
+  /* Catalogue grid */
+  .cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  .cat-card{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;position:relative;cursor:pointer}
+  .cat-card:active{opacity:.8}
+  .cat-card .cat-name{font-size:14px;font-weight:600;margin-bottom:4px;padding-right:22px}
+  .cat-card .cat-type{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+  .cat-card .cat-lock{position:absolute;top:10px;right:10px;font-size:14px;color:var(--dim)}
+  .cat-card .cat-actions{display:flex;gap:6px;margin-top:10px}
+  .cat-card .cat-actions button{margin:0;padding:6px 10px;font-size:12px;border-radius:8px;width:auto}
+  .type-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .type-trains{background:#1a2c1a;color:#39d98a}
+  .type-weather{background:#1a1f2c;color:#3da9fc}
+  .type-clock{background:#2c2a1a;color:#ffb020}
+  .type-message{background:#2c1a1a;color:#ff5a5a}
+  .type-animation{background:#241a2c;color:#b06afc}
+
+  /* Schedule bands */
+  .band-row{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+  .band-header{display:flex;align-items:center;gap:8px}
+  .band-time{font-weight:700;font-size:15px;min-width:52px}
+  .band-item-name{flex:1;font-size:14px;color:var(--text)}
+  .band-bright{font-size:13px;color:var(--dim);min-width:38px;text-align:right}
+  .band-controls{display:flex;gap:6px;align-self:flex-end}
+  .band-controls button{margin:0;padding:5px 10px;font-size:12px;border-radius:8px;width:auto}
+
+  /* Field rows inside sheet */
+  .field-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .field-row label{color:var(--dim);font-size:12px;min-width:72px}
+  .field-row input,.field-row select{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px;font-size:14px;font-family:inherit}
+  .field-row input:focus,.field-row select:focus{outline:none;border-color:var(--accent)}
+  .colour-swatch{width:30px;height:30px;border-radius:6px;border:2px solid var(--line);cursor:pointer;flex-shrink:0;padding:0}
+  .station-results{background:var(--card2);border:1px solid var(--line);border-radius:8px;margin-top:4px;max-height:160px;overflow-y:auto;display:none}
+  .station-result{padding:8px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
+  .station-result:last-child{border-bottom:none}
+  .station-result:hover,.station-result:active{background:var(--card)}
+  .station-result .crs{color:var(--dim);font-size:11px;margin-left:6px}
+  .board-row{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;position:relative}
+  .board-row h3{font-size:12px;font-weight:600;margin:0 0 8px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+  .remove-btn{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--danger);font-size:18px;width:auto;margin:0;padding:0;cursor:pointer;line-height:1}
+
+  /* Bottom sheet */
+  .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;opacity:0;transition:opacity .25s;pointer-events:none}
+  .sheet-overlay.open{opacity:1;pointer-events:all}
+  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:520px;
+    background:var(--card);border-radius:20px 20px 0 0;z-index:101;transition:transform .3s cubic-bezier(.32,0,.67,0);
+    max-height:90dvh;display:flex;flex-direction:column}
+  .sheet.open{transform:translateX(-50%) translateY(0)}
+  .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:2px;margin:12px auto 0}
+  .sheet-header{padding:16px 16px 0;display:flex;align-items:center;gap:10px}
+  .sheet-title{font-size:17px;font-weight:700;flex:1}
+  .sheet-close{background:none;border:none;color:var(--dim);font-size:22px;width:auto;margin:0;padding:4px 8px;cursor:pointer}
+  .sheet-body{padding:16px;overflow-y:auto;flex:1}
+  .sheet-footer{padding:12px 16px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:flex;gap:10px}
+  .sheet-footer button{margin:0;flex:1}
+
+  /* Device list */
+  .devlink-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--line)}
+  .devlink-row:last-child{border-bottom:none}
 </style>
 </head>
 <body>
@@ -111,7 +146,7 @@
   <div class="muted" id="authNote" style="text-align:center;margin-top:12px"></div>
 </div>
 
-<!-- MAIN SCREEN (shown after login) -->
+<!-- MAIN SCREEN -->
 <div id="mainScreen">
   <h1>Screen Control</h1>
   <div class="sub">
@@ -143,30 +178,20 @@
     <div class="muted">Messages show within ~20s and clear themselves after 1 hour.</div>
   </div>
 
+  <!-- CATALOGUE -->
   <div class="card">
-    <div class="section-toggle" id="settingsToggle" onclick="toggleSettings()">
-      <h2 style="margin:0">Device settings</h2>
-      <span class="arrow">▶</span>
-    </div>
-    <div class="collapsible" id="settingsPanel">
+    <h2>My catalogue</h2>
+    <div id="catalogueGrid" class="cat-grid"><div style="color:var(--dim);font-size:14px;grid-column:1/-1">Loading…</div></div>
+    <button class="secondary" id="newItemBtn">+ New item</button>
+  </div>
 
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;color:var(--dim);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Train boards</div>
-        <div id="boardsList"></div>
-        <button class="secondary" id="addBoardBtn" style="margin-top:4px">+ Add row</button>
-      </div>
-
-      <div>
-        <div style="font-size:13px;color:var(--dim);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Schedule</div>
-        <div id="scheduleList"></div>
-        <button class="secondary" id="addBandBtn" style="margin-top:4px">+ Add time band</button>
-      </div>
-
-      <div class="save-row">
-        <button id="saveSettingsBtn">Save settings</button>
-        <button class="secondary" id="cancelSettingsBtn">Cancel</button>
-      </div>
-    </div>
+  <!-- SCHEDULE -->
+  <div class="card">
+    <h2>Schedule</h2>
+    <div id="scheduleBands"><div style="color:var(--dim);font-size:14px">Loading…</div></div>
+    <button class="secondary" id="addBandBtn">+ Add time band</button>
+    <div class="muted" style="margin-bottom:10px">The first band whose start hour ≤ the current hour is shown. Falls back to built-in schedule if empty.</div>
+    <button id="saveScheduleBtn">Save schedule</button>
   </div>
 
   <div class="card">
@@ -184,13 +209,73 @@
   </div>
 </div>
 
+<!-- CATALOGUE ITEM SHEET -->
+<div class="sheet-overlay" id="itemOverlay" onclick="closeItemSheet()"></div>
+<div class="sheet" id="itemSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-title" id="sheetTitle">Edit item</div>
+    <button class="sheet-close" onclick="closeItemSheet()">×</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label class="field-label">Name</label>
+      <input id="itemName" placeholder="e.g. Morning trains">
+    </div>
+    <div class="field">
+      <label class="field-label">Type</label>
+      <select id="itemType" onchange="renderItemFields()">
+        <option value="trains">Trains</option>
+        <option value="weather">Weather</option>
+        <option value="clock">Clock</option>
+        <option value="message">Message</option>
+        <option value="animation">Animation</option>
+      </select>
+    </div>
+    <div id="itemFields"></div>
+  </div>
+  <div class="sheet-footer">
+    <button class="secondary" onclick="closeItemSheet()">Cancel</button>
+    <button id="saveItemBtn">Save</button>
+  </div>
+</div>
+
+<!-- SCHEDULE BAND SHEET -->
+<div class="sheet-overlay" id="bandOverlay" onclick="closeBandSheet()"></div>
+<div class="sheet" id="bandSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-title">Edit time band</div>
+    <button class="sheet-close" onclick="closeBandSheet()">×</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label class="field-label">From (hour)</label>
+      <select id="bandHour">
+        ${Array.from({length:24},(_,h)=>`<option value="${h}">${String(h).padStart(2,"0")}:00</option>`).join("")}
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label">Screen</label>
+      <select id="bandItem"></select>
+    </div>
+    <div class="field">
+      <label class="field-label">Brightness — <span id="bandBrightLabel">100%</span></label>
+      <input type="range" id="bandBright" min="0" max="100" value="100"
+        oninput="document.getElementById('bandBrightLabel').textContent=this.value+'%'">
+    </div>
+  </div>
+  <div class="sheet-footer">
+    <button class="secondary" onclick="closeBandSheet()">Cancel</button>
+    <button id="saveBandBtn">Save band</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 (function(){
-  // --- Supabase project info (public anon key — safe to embed in HTML) ---
-  // Fill these in from your Supabase project: Settings -> API
-  const SB_URL = "https://zumpbzgbhzvcwwijrbip.supabase.co";
+  const SB_URL  = "https://zumpbzgbhzvcwwijrbip.supabase.co";
   const SB_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bXBiemdiaHp2Y3d3aWpyYmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDM1NDAsImV4cCI6MjA5NjY3OTU0MH0.7zG_CR82sxo48ugxdN67DRUmgr_LU06deQU4qsovT4g";
 
   let token = localStorage.getItem("sb_token") || "";
@@ -211,7 +296,7 @@
     $("conn").innerHTML = '<span class="dot '+state+'"></span>'+label;
   }
 
-  // ---- Auth tab switch ----
+  // ---- Auth tab ----
   function showTab(tab){
     currentTab = tab;
     $("tabLogin").className = tab === "login" ? "active" : "";
@@ -223,7 +308,6 @@
   }
   window.showTab = showTab;
 
-  // ---- Supabase Auth calls ----
   async function sbAuth(path, body){
     const r = await fetch(SB_URL + "/auth/v1" + path, {
       method: "POST",
@@ -286,7 +370,8 @@
     $("userEmail").textContent = user?.email || "";
     $("devBtn").textContent = currentDeviceId || "pick a screen";
     loadUserDevices();
-    if(currentDeviceId) refresh();
+    loadCatalogue();
+    if(currentDeviceId){ refresh(); loadSchedule(); }
     setInterval(() => { if(currentDeviceId) refresh(); }, 8000);
   }
 
@@ -301,8 +386,6 @@
       const res = await fetch(path, Object.assign({signal: ctrl.signal, headers: authHeaders()}, opts));
       clearTimeout(timer);
       if(res.status === 401){
-        // Only sign out if we're actually logged in and the token itself is
-        // bad — never wipe an in-progress login form, and never loop.
         if(token){ token=""; localStorage.removeItem("sb_token"); }
         return null;
       }
@@ -319,15 +402,13 @@
       return;
     }
     $("deviceList").innerHTML = list.map(d => `
-      <div class="row" style="cursor:pointer" onclick="selectDevice('${d.device_id}')">
-        <span class="k">${d.name || d.device_id}</span>
-        <span class="v" style="color:var(--${currentDeviceId===d.device_id?'good':'dim'});font-size:12px">
+      <div class="devlink-row" onclick="selectDevice('${d.device_id}')">
+        <span style="font-size:14px">${d.name || d.device_id}</span>
+        <span style="color:var(--${currentDeviceId===d.device_id?'good':'dim'});font-size:12px;font-weight:600">
           ${currentDeviceId===d.device_id ? '● active' : d.device_id}
         </span>
       </div>`).join("");
-    if(!currentDeviceId && list.length === 1){
-      selectDevice(list[0].device_id);
-    }
+    if(!currentDeviceId && list.length === 1) selectDevice(list[0].device_id);
   }
 
   function selectDevice(id){
@@ -336,6 +417,7 @@
     $("devBtn").textContent = id;
     loadUserDevices();
     refresh();
+    loadSchedule();
   }
   window.selectDevice = selectDevice;
 
@@ -401,165 +483,377 @@
       currentDeviceId = res.device_id;
       localStorage.setItem("deviceId", currentDeviceId);
       $("devBtn").textContent = currentDeviceId;
-      loadUserDevices(); refresh();
+      loadUserDevices(); refresh(); loadSchedule();
     } else {
       toast(res?.detail || "Pairing failed", true);
     }
     $("pairBtn").disabled = false;
   }
 
-  // ---- Settings ----
-  const ALL_MODES = ["TRAINS","WEATHER","PHONE","ANIM","CLOCK"];
-  const BADGE_COLOURS = [
-    [150,0,0],[0,200,50],[0,150,200],[200,100,0],[100,0,200],[0,150,150]
-  ];
-  let draftBoards = [];
-  let draftSchedule = [];
-  let _originalBoards = [];
-  let _originalSchedule = [];
+  // =====================================================================
+  // CATALOGUE
+  // =====================================================================
+  let catalogue = [];
 
-  function toggleSettings(){
-    const t = $("settingsToggle"), p = $("settingsPanel");
-    const open = p.classList.toggle("open");
-    t.classList.toggle("open", open);
-    if(open) loadSettingsIntoUI();
+  async function loadCatalogue(){
+    const items = await api("/api/catalogue");
+    if(!items) return;
+    catalogue = items;
+    renderCatalogue();
   }
 
-  async function loadSettingsIntoUI(){
-    if(!currentDeviceId) return;
-    const dev = await api("/api/user/me");
-    if(!dev) return;
-    // fetch current config by reading the display endpoint
-    const d = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/display");
-    if(!d) return;
-    // We need the raw config - fetch it via a dedicated endpoint
-    const cfg = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/config");
-    if(!cfg) return;
-    _originalBoards  = JSON.parse(JSON.stringify(cfg.boards  || []));
-    _originalSchedule= JSON.parse(JSON.stringify(cfg.schedule|| []));
-    draftBoards   = JSON.parse(JSON.stringify(_originalBoards));
-    draftSchedule = JSON.parse(JSON.stringify(_originalSchedule));
-    renderBoards();
-    renderSchedule();
+  const TYPE_LABELS = {trains:"Trains",weather:"Weather",clock:"Clock",message:"Message",animation:"Animation"};
+
+  function renderCatalogue(){
+    const grid = $("catalogueGrid");
+    if(!catalogue.length){
+      grid.innerHTML = '<div style="color:var(--dim);font-size:14px;grid-column:1/-1">No items yet.</div>';
+      return;
+    }
+    grid.innerHTML = catalogue.map(item => `
+      <div class="cat-card">
+        ${item.is_builtin ? '<span class="cat-lock">🔒</span>' : ''}
+        <div class="cat-name">${esc(item.name)}</div>
+        <div class="cat-type">
+          <span class="type-badge type-${item.type}">${TYPE_LABELS[item.type]||item.type}</span>
+        </div>
+        <div class="cat-actions">
+          ${!item.is_builtin ? `<button class="secondary" onclick="openEditSheet('${item.id}')">Edit</button>` : ''}
+          <button class="secondary" onclick="duplicateItem('${item.id}')">Copy</button>
+          ${!item.is_builtin ? `<button class="danger" onclick="deleteItem('${item.id}')">Del</button>` : ''}
+        </div>
+      </div>`).join("");
   }
+
+  // ---- Item sheet state ----
+  let editingItemId = null;  // null = new item
+
+  function openNewSheet(){
+    editingItemId = null;
+    $("sheetTitle").textContent = "New item";
+    $("itemName").value = "";
+    $("itemType").value = "trains";
+    renderItemFields();
+    $("itemOverlay").classList.add("open");
+    $("itemSheet").classList.add("open");
+  }
+
+  function openEditSheet(id){
+    const item = catalogue.find(i => i.id === id);
+    if(!item) return;
+    editingItemId = id;
+    $("sheetTitle").textContent = "Edit: " + item.name;
+    $("itemName").value = item.name;
+    $("itemType").value = item.type;
+    renderItemFields(item.config || {});
+    $("itemOverlay").classList.add("open");
+    $("itemSheet").classList.add("open");
+  }
+  window.openEditSheet = openEditSheet;
+
+  function closeItemSheet(){
+    $("itemOverlay").classList.remove("open");
+    $("itemSheet").classList.remove("open");
+  }
+  window.closeItemSheet = closeItemSheet;
+
+  function renderItemFields(cfg){
+    cfg = cfg || {};
+    const type = $("itemType").value;
+    const el = $("itemFields");
+
+    if(type === "trains"){
+      const boards = cfg.boards || [];
+      el.innerHTML = `
+        <div style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;font-weight:600">Train rows (up to 3)</div>
+        <div id="sheetBoards"></div>
+        <button class="secondary" id="sheetAddBoard" style="margin-top:4px;font-size:13px;padding:10px">+ Add row</button>`;
+      window._sheetBoards = boards.length ? JSON.parse(JSON.stringify(boards))
+        : [{badge:"",badge_col:[150,0,0],station:"",match:[],_stationName:""}];
+      renderSheetBoards();
+      $("sheetAddBoard").onclick = () => {
+        if(window._sheetBoards.length >= 3){ toast("Max 3 rows",true); return; }
+        window._sheetBoards.push({badge:"",badge_col:[80,80,80],station:"",match:[],_stationName:""});
+        renderSheetBoards();
+      };
+    } else if(type === "weather"){
+      el.innerHTML = `<div style="color:var(--dim);font-size:14px;padding:8px 0">Weather uses the server's default location. Location per device is coming soon.</div>`;
+    } else if(type === "clock"){
+      const color = colToHex(cfg.color || [255,255,255]);
+      const fmt = cfg.format || "24h";
+      el.innerHTML = `
+        <div class="field-row"><label>Colour</label>
+          <input type="color" id="clockColor" value="${color}" class="colour-swatch" style="flex:none"></div>
+        <div class="field-row"><label>Format</label>
+          <select id="clockFormat">
+            <option value="24h" ${fmt==="24h"?"selected":""}>24-hour</option>
+            <option value="12h" ${fmt==="12h"?"selected":""}>12-hour</option>
+          </select></div>`;
+    } else if(type === "message"){
+      el.innerHTML = `
+        <div class="field">
+          <label class="field-label">Default text (shown when no active message is set)</label>
+          <textarea id="msgText" maxlength="160" placeholder="Leave blank to show nothing by default">${esc(cfg.text||"")}</textarea>
+        </div>`;
+    } else if(type === "animation"){
+      el.innerHTML = `
+        <div class="field">
+          <label class="field-label">Animation URL (.bin file)</label>
+          <input id="animUrl" type="url" placeholder="https://…" value="${esc(cfg.url||"")}">
+        </div>`;
+    }
+  }
+  window.renderItemFields = renderItemFields;
 
   function colToHex(arr){ return "#"+(arr||[0,0,0]).map(v=>v.toString(16).padStart(2,"0")).join(""); }
-  function hexToCol(h){ const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return[r,g,b]; }
+  function hexToCol(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+  function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-  function renderBoards(){
-    const el = $("boardsList");
+  function renderSheetBoards(){
+    const el = $("sheetBoards");
     el.innerHTML = "";
-    draftBoards.forEach((b,i)=>{
+    (window._sheetBoards||[]).forEach((b,i) => {
       const div = document.createElement("div");
       div.className = "board-row";
       div.innerHTML = `
-        <button class="remove-btn" onclick="removeBoard(${i})">×</button>
+        <button class="remove-btn" onclick="removeSheetBoard(${i})">×</button>
         <h3>Row ${i+1}</h3>
         <div class="field-row">
           <label>Badge</label>
-          <input maxlength="3" value="${b.badge||""}" oninput="draftBoards[${i}].badge=this.value.toUpperCase();this.value=this.value.toUpperCase()" style="width:60px;flex:none">
-          <input type="color" value="${colToHex(b.badge_col)}" oninput="draftBoards[${i}].badge_col=hexToCol(this.value)" class="colour-swatch" style="flex:none">
+          <input maxlength="3" value="${esc(b.badge)}" oninput="window._sheetBoards[${i}].badge=this.value.toUpperCase();this.value=this.value.toUpperCase()" style="width:56px;flex:none">
+          <input type="color" value="${colToHex(b.badge_col)}" oninput="window._sheetBoards[${i}].badge_col=hexToCol(this.value)" class="colour-swatch" style="flex:none">
         </div>
         <div class="field-row">
           <label>Station</label>
           <div style="flex:1;position:relative">
-            <input id="stn_${i}" placeholder="Search station…" value="${b._stationName||b.station||""}" oninput="searchStation(${i},this.value)" autocomplete="off">
-            <div class="station-results" id="res_${i}"></div>
+            <input id="sb_stn_${i}" placeholder="Search station…" value="${esc(b._stationName||b.station||"")}" oninput="sbSearchStation(${i},this.value)" autocomplete="off">
+            <div class="station-results" id="sb_res_${i}"></div>
           </div>
         </div>
         <div class="field-row">
           <label>Destinations</label>
-          <input value="${(b.match||[]).join(", ")}" placeholder="e.g. London Bridge, Victoria" oninput="draftBoards[${i}].match=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
+          <input value="${esc((b.match||[]).join(", "))}" placeholder="e.g. London Bridge" oninput="window._sheetBoards[${i}].match=this.value.split(',').map(s=>s.trim()).filter(Boolean)">
         </div>`;
       el.appendChild(div);
     });
   }
 
-  let _searchTimers = {};
-  async function searchStation(idx, val){
-    clearTimeout(_searchTimers[idx]);
-    const res = $("res_"+idx);
+  window.removeSheetBoard = function(i){ window._sheetBoards.splice(i,1); renderSheetBoards(); };
+
+  let _sbTimers = {};
+  window.sbSearchStation = async function(idx, val){
+    clearTimeout(_sbTimers[idx]);
+    const res = $("sb_res_"+idx);
     if(val.length < 2){ res.style.display="none"; return; }
-    _searchTimers[idx] = setTimeout(async()=>{
+    _sbTimers[idx] = setTimeout(async()=>{
       const results = await fetch("/api/stations?q="+encodeURIComponent(val)).then(r=>r.json()).catch(()=>[]);
-      res.innerHTML = results.map(s=>`<div class="station-result" onclick="selectStation(${idx},'${s.c}','${s.n.replace(/'/g,"\\'")}')">
-        ${s.n}<span class="crs">${s.c}</span></div>`).join("") || '<div class="station-result" style="color:var(--dim)">No results</div>';
+      res.innerHTML = results.map(s=>`<div class="station-result" onclick="sbSelectStation(${idx},'${s.c}','${s.n.replace(/'/g,"\\'")}')">
+        ${esc(s.n)}<span class="crs">${s.c}</span></div>`).join("") || '<div class="station-result" style="color:var(--dim)">No results</div>';
       res.style.display = "block";
     }, 250);
+  };
+
+  window.sbSelectStation = function(idx, crs, name){
+    window._sheetBoards[idx].station = crs;
+    window._sheetBoards[idx]._stationName = name;
+    $("sb_stn_"+idx).value = name;
+    $("sb_res_"+idx).style.display = "none";
+  };
+
+  function collectItemConfig(){
+    const type = $("itemType").value;
+    if(type === "trains"){
+      return {boards: (window._sheetBoards||[]).map(b => ({
+        badge: b.badge, badge_col: b.badge_col, station: b.station, match: b.match
+      }))};
+    } else if(type === "clock"){
+      return {color: hexToCol($("clockColor").value), format: $("clockFormat").value};
+    } else if(type === "message"){
+      return {text: $("msgText").value.trim()};
+    } else if(type === "animation"){
+      return {url: $("animUrl").value.trim()};
+    }
+    return {};
   }
 
-  function selectStation(idx, crs, name){
-    draftBoards[idx].station = crs;
-    draftBoards[idx]._stationName = name;
-    $("stn_"+idx).value = name;
-    $("res_"+idx).style.display = "none";
+  async function saveItem(){
+    const name = $("itemName").value.trim();
+    if(!name){ toast("Enter a name", true); return; }
+    $("saveItemBtn").disabled = true;
+    const body = {name, type: $("itemType").value, config: collectItemConfig()};
+    let res;
+    if(editingItemId){
+      res = await api("/api/catalogue/"+encodeURIComponent(editingItemId),{
+        method:"PATCH", body: JSON.stringify({name: body.name, config: body.config})
+      });
+    } else {
+      res = await api("/api/catalogue",{method:"POST", body: JSON.stringify(body)});
+    }
+    $("saveItemBtn").disabled = false;
+    if(res?.ok || res?.id){
+      toast(editingItemId ? "Saved" : "Created");
+      closeItemSheet();
+      await loadCatalogue();
+    } else {
+      toast(res?.detail || "Failed", true);
+    }
   }
 
-  function removeBoard(i){ draftBoards.splice(i,1); renderBoards(); }
-
-  $("addBoardBtn").addEventListener("click",()=>{
-    draftBoards.push({badge:"NEW",badge_col:[80,80,80],station:"",match:[],_stationName:""});
-    renderBoards();
-  });
-
-  function renderSchedule(){
-    const el = $("scheduleList");
-    el.innerHTML="";
-    draftSchedule.forEach((b,i)=>{
-      const div=document.createElement("div");
-      div.className="band-row";
-      const modesHtml=ALL_MODES.map(m=>`<span class="mode-chip ${(b.modes||[]).includes(m)?"active":""}" onclick="toggleMode(${i},'${m}')">${m}</span>`).join("");
-      div.innerHTML=`
-        <h3>Band ${i+1}
-          <button onclick="removeBand(${i})" style="background:none;border:none;color:var(--danger);float:right;cursor:pointer;width:auto;margin:0;padding:0;font-size:14px">Remove</button>
-        </h3>
-        <div class="field-row"><label>From</label>
-          <select onchange="draftSchedule[${i}].start=parseInt(this.value)">
-            ${Array.from({length:24},(_,h)=>`<option value="${h}" ${b.start===h?"selected":""}>${String(h).padStart(2,"0")}:00</option>`).join("")}
-          </select>
-        </div>
-        <div class="field-row"><label>Brightness</label>
-          <input type="range" min="0" max="100" value="${Math.round((b.brightness||0.5)*100)}"
-            oninput="draftSchedule[${i}].brightness=this.value/100;this.nextElementSibling.textContent=this.value+'%'">
-          <span style="color:var(--dim);font-size:13px;min-width:36px">${Math.round((b.brightness||0.5)*100)}%</span>
-        </div>
-        <div style="color:var(--dim);font-size:12px;margin-bottom:4px">Screens</div>
-        <div class="mode-chips">${modesHtml}</div>`;
-      el.appendChild(div);
-    });
-  }
-
-  function toggleMode(bi,mode){
-    const s=draftSchedule[bi]; s.modes=s.modes||[];
-    const idx=s.modes.indexOf(mode);
-    if(idx>=0) s.modes.splice(idx,1); else s.modes.push(mode);
-    renderSchedule();
-  }
-  function removeBand(i){ draftSchedule.splice(i,1); renderSchedule(); }
-  $("addBandBtn").addEventListener("click",()=>{
-    draftSchedule.push({start:0,brightness:0.5,modes:["TRAINS","WEATHER"]});
-    renderSchedule();
-  });
-
-  async function saveSettings(){
-    if(!currentDeviceId){ toast("No device selected",true); return; }
-    $("saveSettingsBtn").disabled=true;
-    const res=await api("/api/user/device/"+encodeURIComponent(currentDeviceId),{
+  async function duplicateItem(id){
+    const item = catalogue.find(i => i.id === id);
+    if(!item) return;
+    const res = await api("/api/catalogue",{
       method:"POST",
-      body:JSON.stringify({boards:draftBoards,schedule:draftSchedule})
+      body: JSON.stringify({name:"Copy of "+item.name, type:item.type, config:item.config||{}})
     });
-    if(res?.ok){ toast("Settings saved"); _originalBoards=JSON.parse(JSON.stringify(draftBoards)); _originalSchedule=JSON.parse(JSON.stringify(draftSchedule)); }
-    else toast("Save failed",true);
-    $("saveSettingsBtn").disabled=false;
+    if(res?.id){ toast("Duplicated"); await loadCatalogue(); }
+    else toast("Failed", true);
   }
-  function cancelSettings(){
-    draftBoards=JSON.parse(JSON.stringify(_originalBoards));
-    draftSchedule=JSON.parse(JSON.stringify(_originalSchedule));
-    renderBoards(); renderSchedule();
-    toast("Changes discarded");
+  window.duplicateItem = duplicateItem;
+
+  async function deleteItem(id){
+    if(!confirm("Delete this item?")) return;
+    const res = await api("/api/catalogue/"+encodeURIComponent(id),{method:"DELETE"});
+    if(res?.ok){ toast("Deleted"); await loadCatalogue(); }
+    else toast(res?.detail||"Failed", true);
   }
-  $("saveSettingsBtn").addEventListener("click",saveSettings);
-  $("cancelSettingsBtn").addEventListener("click",cancelSettings);
+  window.deleteItem = deleteItem;
+
+  // =====================================================================
+  // SCHEDULE
+  // =====================================================================
+  let draftBands = [];   // [{catalogue_item_id, start_hour, brightness, day_mask, sort_order, _item}]
+  let editingBandIdx = null;
+
+  async function loadSchedule(){
+    if(!currentDeviceId) return;
+    const bands = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule");
+    draftBands = (bands || []).map((b,i) => ({...b, sort_order: i}));
+    renderScheduleBands();
+  }
+
+  function renderScheduleBands(){
+    const el = $("scheduleBands");
+    if(!draftBands.length){
+      el.innerHTML = '<div style="color:var(--dim);font-size:14px">No bands yet — using built-in schedule.</div>';
+      return;
+    }
+    el.innerHTML = draftBands.map((b,i) => {
+      const item = b.catalogue_item || catalogue.find(c => c.id === b.catalogue_item_id);
+      const name = item ? item.name : "(unknown)";
+      const type = item ? item.type : "";
+      return `<div class="band-row">
+        <div class="band-header">
+          <span class="band-time">${String(b.start_hour||0).padStart(2,"0")}:00</span>
+          <span class="band-item-name">
+            ${name}
+            ${type ? `<span class="type-badge type-${type}" style="margin-left:6px">${TYPE_LABELS[type]||type}</span>` : ""}
+          </span>
+          <span class="band-bright">${Math.round((b.brightness||1)*100)}%</span>
+        </div>
+        <div class="band-controls">
+          <button class="secondary" onclick="moveBand(${i},-1)" ${i===0?"disabled":""}>↑</button>
+          <button class="secondary" onclick="moveBand(${i},1)" ${i===draftBands.length-1?"disabled":""}>↓</button>
+          <button class="secondary" onclick="openBandSheet(${i})">Edit</button>
+          <button class="secondary" onclick="dupBand(${i})">Copy</button>
+          <button class="danger" onclick="removeBand(${i})">Del</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function moveBand(i, dir){
+    const j = i + dir;
+    if(j < 0 || j >= draftBands.length) return;
+    [draftBands[i], draftBands[j]] = [draftBands[j], draftBands[i]];
+    renderScheduleBands();
+  }
+  window.moveBand = moveBand;
+
+  function dupBand(i){
+    const copy = {...draftBands[i]};
+    draftBands.splice(i+1, 0, copy);
+    renderScheduleBands();
+  }
+  window.dupBand = dupBand;
+
+  function removeBand(i){
+    draftBands.splice(i,1);
+    renderScheduleBands();
+  }
+  window.removeBand = removeBand;
+
+  function populateBandItemSelect(selectedId){
+    const sel = $("bandItem");
+    sel.innerHTML = catalogue.map(c =>
+      `<option value="${c.id}" ${c.id===selectedId?"selected":""}>${esc(c.name)} (${TYPE_LABELS[c.type]||c.type})</option>`
+    ).join("");
+  }
+
+  function openBandSheet(idx){
+    editingBandIdx = idx;
+    const b = draftBands[idx];
+    $("bandHour").value = b.start_hour || 0;
+    $("bandBright").value = Math.round((b.brightness||1)*100);
+    $("bandBrightLabel").textContent = $("bandBright").value + "%";
+    populateBandItemSelect(b.catalogue_item_id);
+    $("bandOverlay").classList.add("open");
+    $("bandSheet").classList.add("open");
+  }
+  window.openBandSheet = openBandSheet;
+
+  function openNewBandSheet(){
+    editingBandIdx = null;
+    $("bandHour").value = 0;
+    $("bandBright").value = 100;
+    $("bandBrightLabel").textContent = "100%";
+    populateBandItemSelect(null);
+    $("bandOverlay").classList.add("open");
+    $("bandSheet").classList.add("open");
+  }
+
+  function closeBandSheet(){
+    $("bandOverlay").classList.remove("open");
+    $("bandSheet").classList.remove("open");
+  }
+  window.closeBandSheet = closeBandSheet;
+
+  function saveBandSheet(){
+    const band = {
+      catalogue_item_id: $("bandItem").value,
+      start_hour: parseInt($("bandHour").value),
+      brightness: parseInt($("bandBright").value) / 100,
+      day_mask: 127,
+      sort_order: 0,
+    };
+    const item = catalogue.find(c => c.id === band.catalogue_item_id);
+    if(item) band.catalogue_item = item;
+    if(editingBandIdx !== null){
+      draftBands[editingBandIdx] = band;
+    } else {
+      draftBands.push(band);
+    }
+    closeBandSheet();
+    renderScheduleBands();
+  }
+
+  async function saveSchedule(){
+    if(!currentDeviceId){ toast("Select a screen first",true); return; }
+    $("saveScheduleBtn").disabled = true;
+    const bands = draftBands.map((b,i) => ({
+      catalogue_item_id: b.catalogue_item_id,
+      start_hour: b.start_hour,
+      brightness: b.brightness,
+      day_mask: b.day_mask || 127,
+      sort_order: i,
+    }));
+    const res = await api("/api/user/device/"+encodeURIComponent(currentDeviceId)+"/schedule",{
+      method:"POST", body: JSON.stringify({bands})
+    });
+    $("saveScheduleBtn").disabled = false;
+    if(res?.ok){ toast("Schedule saved"); refresh(); }
+    else toast(res?.detail||"Failed",true);
+  }
 
   // ---- Wire up ----
   $("authBtn").addEventListener("click", doAuth);
@@ -568,19 +862,23 @@
   $("clearBtn").addEventListener("click", clearMessage);
   $("rebootBtn").addEventListener("click", reboot);
   $("pairBtn").addEventListener("click", pair);
+  $("newItemBtn").addEventListener("click", openNewSheet);
+  $("saveItemBtn").addEventListener("click", saveItem);
+  $("addBandBtn").addEventListener("click", openNewBandSheet);
+  $("saveBandBtn").addEventListener("click", saveBandSheet);
+  $("saveScheduleBtn").addEventListener("click", saveSchedule);
+
   $("devBtn").addEventListener("click", () => {
     const v = prompt("Device ID", currentDeviceId);
     if(v && v.trim()) selectDevice(v.trim());
   });
 
-  // Enter key on auth fields
   [$("authEmail"),$("authPassword"),$("authConfirm")].forEach(el => {
     if(el) el.addEventListener("keydown", e => { if(e.key === "Enter") doAuth(); });
   });
 
-  // ---- Boot: check for existing session ----
+  // ---- Boot ----
   if(token){
-    // Validate stored token
     fetch(SB_URL+"/auth/v1/user",{headers:{"Authorization":"Bearer "+token,"apikey":SB_ANON}})
       .then(r => r.ok ? r.json() : null)
       .then(user => {
