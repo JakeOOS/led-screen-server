@@ -625,38 +625,45 @@ def draw_train_dashboard(dashboard_data, ref_time):
             graphics.set_pen(screen.create_pen(COL_GREY))
             graphics.line(0, y + 10, 64, y + 10)
 
-def draw_weather_3col(data, ref_ticks):
+def scale_icon(icon, factor=2):
+    """Nearest-neighbour pixel-double an icon so it reads as a 'big' icon
+    without needing separate hand-drawn art at each size."""
+    scaled = []
+    for row in icon:
+        wide_row = "".join(ch * factor for ch in row)
+        for _ in range(factor):
+            scaled.append(wide_row)
+    return scaled
+
+def draw_weather_2day(data, ref_ticks):
+    """Today's forecast as a large icon + day label, tomorrow's as a compact
+    label/high/low block, split by a blue divider -- matches the physical
+    tabletop display's reference design."""
     screen.clear()
     if not data:
         screen.text("WEATHER...", 5, 12, COL_WHITE, font=FONT_3X5)
         return
-    graphics.set_pen(screen.create_pen(COL_GREY))
-    graphics.line(21, 0, 21, 32)
-    graphics.line(43, 0, 43, 32)
-    col_starts = [1, 22, 44]
-    col_w = 20          # usable width per column (leaving 1px for divider)
-    for i, day in enumerate(data):
-        if i > 2: break
-        x_base = col_starts[i]
-        icon = WEATHER_ICONS.get(day['icon_name'], ICON_CLOUDY)
-        icon_w = len(icon[0])
-        icon_x = x_base + (col_w - icon_w) // 2
-        for ry, row in enumerate(icon):
-            for rx, ch in enumerate(row):
-                if ch != ' ' and rx < col_w:   # clip to column width
-                    c = ICON_PALETTE.get(ch, COL_WHITE)
-                    screen.pixel(icon_x + rx, 1 + ry, c)
-        # Day label centred in column
-        lbl = day['day']
-        lw = len(lbl) * 4 - 1
-        lx = x_base + (col_w - lw) // 2
-        screen.text(lbl, lx, 13, COL_CYAN, font=FONT_3X5)
-        # Temps: low (blue) / high (red)
-        lo = str(day['low']); hi = str(day['high'])
-        total_w = (len(lo) * 4 - 1) + 2 + (len(hi) * 4 - 1)
-        tx = x_base + (col_w - total_w) // 2
-        screen.text(lo, tx, 22, COL_BLUE, font=FONT_3X5)
-        screen.text(hi, tx + (len(lo) * 4 - 1) + 2, 22, COL_RED, font=FONT_3X5)
+    today = data[0]
+    tomorrow = data[1] if len(data) > 1 else None
+
+    big_icon = scale_icon(WEATHER_ICONS.get(today['icon_name'], ICON_CLOUDY), 2)
+    for ry, row in enumerate(big_icon):
+        for rx, ch in enumerate(row):
+            if ch != ' ':
+                screen.pixel(1 + rx, 1 + ry, ICON_PALETTE.get(ch, COL_WHITE))
+    screen.text(today['day'], 1, 26, COL_WHITE, font=FONT_BOLD_5X5)
+
+    divider_x = 41
+    graphics.set_pen(screen.create_pen((90, 130, 255)))
+    graphics.line(divider_x, 0, divider_x, 32)
+
+    screen.text(str(today['high']), 29, 5, COL_WHITE, font=FONT_BOLD_5X5)
+    screen.text(str(today['low']), 29, 20, COL_WHITE, font=FONT_BOLD_5X5)
+
+    if tomorrow:
+        screen.text(tomorrow['day'], 45, 1, COL_WHITE, font=FONT_BOLD_5X5)
+        screen.text(str(tomorrow['high']), 45, 12, COL_WHITE, font=FONT_BOLD_5X5)
+        screen.text(str(tomorrow['low']), 45, 22, COL_WHITE, font=FONT_BOLD_5X5)
 
 def get_word_width(word, scale=1):
     w = 0
@@ -898,7 +905,7 @@ def main():
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
-        elif mode == "WEATHER": draw_weather_3col(state["weather"], now_ticks)
+        elif mode == "WEATHER": draw_weather_2day(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
         elif mode == "ANIM":    draw_animation(now_ticks)
         elif mode == "CLOCK":   draw_clock(local_struct)
