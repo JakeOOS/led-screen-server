@@ -639,11 +639,13 @@ def draw_weather_3col(data, ref_ticks):
         if i > 2: break
         x_base = col_starts[i]
         icon = WEATHER_ICONS.get(day['icon_name'], ICON_CLOUDY)
+        icon_w = len(icon[0])
+        icon_x = x_base + (col_w - icon_w) // 2
         for ry, row in enumerate(icon):
             for rx, ch in enumerate(row):
                 if ch != ' ' and rx < col_w:   # clip to column width
                     c = ICON_PALETTE.get(ch, COL_WHITE)
-                    screen.pixel(x_base + rx, 1 + ry, c)
+                    screen.pixel(icon_x + rx, 1 + ry, c)
         # Day label centred in column
         lbl = day['day']
         lw = len(lbl) * 4 - 1
@@ -656,19 +658,19 @@ def draw_weather_3col(data, ref_ticks):
         screen.text(lo, tx, 22, COL_BLUE, font=FONT_3X5)
         screen.text(hi, tx + (len(lo) * 4 - 1) + 2, 22, COL_RED, font=FONT_3X5)
 
-def get_word_width(word):
+def get_word_width(word, scale=1):
     w = 0
     for c in word:
-        w += len(FONT_BOLD_5X5.get(c, ["     "][0])) + 1
+        w += len(FONT_BOLD_5X5.get(c, ["     "])[0]) * scale + 1
     return w
 
-def wrap_text_to_lines(text, max_w=62):
+def wrap_text_to_lines(text, max_w=62, scale=1):
     words = text.split(" ")
     lines = []
     current_line = ""
     for word in words:
         if not word: continue
-        current_w = get_word_width(current_line + " " + word) if current_line else get_word_width(word)
+        current_w = get_word_width(current_line + " " + word, scale) if current_line else get_word_width(word, scale)
         if not current_line:
             current_line = word
         elif current_w <= max_w:
@@ -680,10 +682,32 @@ def wrap_text_to_lines(text, max_w=62):
         lines.append(current_line)
     return lines
 
+# Display scale used for the "beautiful" oversized message rendering, and the
+# ceiling on how many lines it may take up before we fall back to the normal
+# size (past this, the big font starts looking cramped rather than striking).
+DISPLAY_SCALE = 2
+DISPLAY_MAX_LINES = 3
+
 def draw_phone_screen(msg, ref_time):
     screen.clear()
     if not msg:
         return
+
+    # Prefer a big "display" rendering of the bold font -- only fall back to
+    # the normal size (with scrolling if needed) if the message is too long
+    # to sit statically on screen at the larger scale.
+    big_lines = wrap_text_to_lines(msg, max_w=62, scale=DISPLAY_SCALE)
+    line_h_big = 6 * DISPLAY_SCALE + 1
+    total_height_big = len(big_lines) * line_h_big - 1
+    if len(big_lines) <= DISPLAY_MAX_LINES and total_height_big <= 32:
+        y_start = (32 - total_height_big) // 2
+        for line in big_lines:
+            line_w = get_word_width(line, DISPLAY_SCALE) - 1
+            x = (64 - line_w) // 2
+            screen.text(line, x, y_start, COL_WHITE, font=FONT_BOLD_5X5, scale=DISPLAY_SCALE, spacing=1)
+            y_start += line_h_big
+        return
+
     lines = wrap_text_to_lines(msg, max_w=62)
     total_height = len(lines) * 7 - 1
     if total_height <= 32:
