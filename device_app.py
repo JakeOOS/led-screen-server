@@ -778,10 +778,17 @@ def main():
     wait_min(t)
     light(True)
 
-    # O — server connection
+    # O — server connection (retry a few times: WiFi may still be settling
+    # right after boot, and the server can be slow on the first request)
     t = time.time()
-    state = fetch_display_state(state)
-    have_server = bool(state.get("epoch"))
+    have_server = False
+    for attempt in range(3):
+        if check_wifi():
+            state = fetch_display_state(state)
+            have_server = bool(state.get("epoch"))
+        if have_server:
+            break
+        time.sleep(2)
     wait_min(t)
     light(have_server, "SERVER FAIL" if not have_server else None)
 
@@ -790,13 +797,17 @@ def main():
     wait_min(t)
     light(True)
 
-    # E — APIs (trains + weather both came back)
+    # E — APIs. Only expect data for modes the server actually scheduled:
+    # with catalogue-based schedules, trains/weather are legitimately empty
+    # when the active time slot doesn't include those screens.
     t = time.time()
-    have_weather = bool(state.get("weather"))
-    have_trains  = bool(state.get("trains"))
-    api_ok = have_weather and have_trains
-    if not have_weather: errors.append("WEATHER FAIL")
-    if not have_trains:  errors.append("TRAINS FAIL")
+    modes = state.get("allowed_modes", [])
+    weather_ok = bool(state.get("weather")) or "WEATHER" not in modes
+    trains_ok  = bool(state.get("trains"))  or "TRAINS" not in modes
+    api_ok = have_server and weather_ok and trains_ok
+    if have_server:
+        if not weather_ok: errors.append("WEATHER FAIL")
+        if not trains_ok:  errors.append("TRAINS FAIL")
     wait_min(t)
     light(api_ok, None)    # error labels already appended above
 
@@ -815,7 +826,9 @@ def main():
         time.sleep(0.4)
 
     sync_tick = time.ticks_ms()
-    last_poll = time.time()        # we already polled above; don't re-poll instantly
+    # If the boot poll succeeded, wait the normal interval before re-polling.
+    # If it failed, poll again straight away so live data appears quickly.
+    last_poll = time.time() if have_server else time.time() - POLL_INTERVAL
     last_anim_fetch = -9999
     last_brightness = -1
     last_message = ""
