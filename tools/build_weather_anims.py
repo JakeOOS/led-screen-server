@@ -1,17 +1,17 @@
 """Build the split weather-screen animations for the VOXEL LED screen.
 
 Scans a folder for After Effects exports. Naming: the condition name
-(sunny/cloudy/rain/stormy/snow) anywhere in the filename; files with
-"mini" in the name are the right-hand 12x32 strip, everything else is
-the 52x32 left side. So these all work:
+(sunny/cloudy/rain/stormy/snow) anywhere in the filename, e.g.
 
-    WeatherIdea_02 {Sunny}_1.mov          -> sunny left  (52x32)
-    WeatherIdea_02 {Sunny} {Mini}.mov     -> sunny right (12x32)
+    WeatherIdea_02 {Sunny}_1.mov          -> sunny (64x32 full frame)
 
-Exact multiples (520x320 / 120x320) are fine too. Snow is optional —
-the server falls back to rain until it exists. Converts each to the
-LDA1 anim format at 10fps and writes weather_anims/<cond>_<L|R>.bin in
-the repo. Commit + push those and Render serves them to the screen.
+Each clip is the FULL 64x32 frame showing today's condition; the
+firmware overlays the temps and short divider on top. Exact multiples
+(640x320 etc.) are fine. Files with "mini" in the name are ignored
+(leftover from the abandoned split design). Snow is optional — the
+server falls back to rain until it exists. Converts each to the LDA1
+anim format at 10fps and writes weather_anims/<cond>_L.bin in the
+repo. Commit + push those and Render serves them to the screen.
 
 Usage:
     python3 tools/build_weather_anims.py        # reads ~/Desktop/WeatherAnimations
@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(REPO, "sim"))
 from mp4_to_anim import extract_frames, build_anim_bytes  # noqa: E402
 
 CONDITIONS = ["sunny", "cloudy", "rain", "stormy", "snow"]
-SIZES = {"L": (52, 32), "R": (12, 32)}
+SIZES = {"L": (64, 32)}      # full-frame; "L" kept for URL compatibility
 EXTS = (".mp4", ".mov", ".gif", ".webm")
 OUT_DIR = os.path.join(REPO, "weather_anims")
 
@@ -47,16 +47,12 @@ def video_size(path):
 
 
 def find_source(folder, cond, side):
-    """Newest file for this condition+side. Side R = 'mini' in the name,
-    side L = the condition without 'mini'."""
+    """Newest full-frame file for this condition ('mini' files ignored)."""
     best = None
     for name in os.listdir(folder):
         stem, ext = os.path.splitext(name)
         low = stem.lower()
-        if ext.lower() not in EXTS or cond not in low:
-            continue
-        is_mini = "mini" in low
-        if (side == "R") != is_mini:
+        if ext.lower() not in EXTS or cond not in low or "mini" in low:
             continue
         p = os.path.join(folder, name)
         m = os.stat(p).st_mtime
