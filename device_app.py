@@ -544,9 +544,11 @@ def draw_weather_split(data, ref_ticks):
 
     today = data[0]
     tom = data[1] if len(data) > 1 else None
+    # One empty column each side of the divider: today ends at x=50,
+    # line at x=52, tomorrow starts at x=54.
     hi = str(today.get("high", "")); lo = str(today.get("low", ""))
-    screen.text(hi, 50 - _text_w(hi, FONT_4X6), 18, COL_RED, font=FONT_4X6)
-    screen.text(lo, 50 - _text_w(lo, FONT_4X6), 25, COL_BLUE, font=FONT_4X6)
+    screen.text(hi, 51 - _text_w(hi, FONT_4X6), 18, COL_RED, font=FONT_4X6)
+    screen.text(lo, 51 - _text_w(lo, FONT_4X6), 25, COL_BLUE, font=FONT_4X6)
     if tom:
         screen.text(str(tom.get("high", "")), 54, 18, COL_RED, font=FONT_4X6)
         screen.text(str(tom.get("low", "")), 54, 25, COL_BLUE, font=FONT_4X6)
