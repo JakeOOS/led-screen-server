@@ -134,7 +134,10 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--folder", default=DEFAULT_FOLDER)
     ap.add_argument("--secret", default="tulsehill-screen-2026-x7k2m9")
-    ap.add_argument("--colors", type=int, default=48)
+    # 256 = the format's max; smooth gradients (clouds, glows) hog palette
+    # slots, and at lower counts rare colours (a lightning flash) get merged
+    # into their nearest neighbour.
+    ap.add_argument("--colors", type=int, default=256)
     ap.add_argument("--fit", choices=["cover", "contain"], default="cover")
     args = ap.parse_args()
 
