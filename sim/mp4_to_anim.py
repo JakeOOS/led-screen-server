@@ -23,13 +23,13 @@ DEVICE_FPS = 10   # matches (now_ticks // 100) % nframes in device_app.py's draw
 W, H = 64, 32
 
 
-def extract_frames(input_path, tmpdir, fps, fit, nearest):
+def extract_frames(input_path, tmpdir, fps, fit, nearest, w=W, h=H):
     interp = "neighbor" if nearest else "lanczos"
     if fit == "cover":
-        vf = f"fps={fps},scale={W}:{H}:force_original_aspect_ratio=increase:flags={interp},crop={W}:{H}"
+        vf = f"fps={fps},scale={w}:{h}:force_original_aspect_ratio=increase:flags={interp},crop={w}:{h}"
     else:  # contain
-        vf = (f"fps={fps},scale={W}:{H}:force_original_aspect_ratio=decrease:flags={interp},"
-              f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black")
+        vf = (f"fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease:flags={interp},"
+              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black")
 
     out_pattern = os.path.join(tmpdir, "f_%05d.png")
     result = subprocess.run(
@@ -46,11 +46,11 @@ def extract_frames(input_path, tmpdir, fps, fit, nearest):
     return [Image.open(os.path.join(tmpdir, f)).convert("RGB") for f in files]
 
 
-def build_anim_bytes(frames, colors, dither):
+def build_anim_bytes(frames, colors, dither, w=W, h=H):
     n = len(frames)
-    strip = Image.new("RGB", (W, H * n))
+    strip = Image.new("RGB", (w, h * n))
     for i, frame in enumerate(frames):
-        strip.paste(frame, (0, H * i))
+        strip.paste(frame, (0, h * i))
 
     dither_mode = Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE
     quant = strip.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=dither_mode)
@@ -59,7 +59,7 @@ def build_anim_bytes(frames, colors, dither):
     palette += [0] * (colors * 3 - len(palette))  # pad if fewer distinct colors were used
     indices = quant.tobytes()
 
-    header = b"LDA1" + bytes([W, H]) + colors.to_bytes(2, "little") + n.to_bytes(2, "little")
+    header = b"LDA1" + bytes([w, h]) + colors.to_bytes(2, "little") + n.to_bytes(2, "little")
     return header + bytes(palette) + indices
 
 
