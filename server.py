@@ -23,6 +23,7 @@ Environment variables (set in Render):
 import os
 import time
 import random
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -34,7 +35,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "23"
+FIRMWARE_VERSION = "24"
 
 OWM_API_KEY   = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
@@ -526,12 +527,9 @@ _station_cache = {}
 STATION_TTL = 60
 
 
-def _fetch_station(station):
-    now = time.time()
-    cached = _station_cache.get(station)
-    if cached and (now - cached["ts"] < STATION_TTL):
-        return cached["services"]
-    services = cached["services"] if cached else []
+def _refresh_station(station):
+    """Fetch fresh departures and update the cache. Blocking."""
+    services = None
     try:
         r = requests.get(RDM_URL_BASE + station, headers=RDM_HEADERS, timeout=10)
         if r.status_code == 200:
@@ -540,8 +538,28 @@ def _fetch_station(station):
             print("RDM", station, "status", r.status_code)
     except Exception as e:
         print("RDM error", station, e)
-    _station_cache[station] = {"ts": now, "services": services}
+    cached = _station_cache.get(station)
+    if services is None:
+        services = cached["services"] if cached else []
+    _station_cache[station] = {"ts": time.time(), "services": services}
     return services
+
+
+def _fetch_station(station):
+    """Serve cached departures instantly; refresh stale data in the
+    background so device polls are never blocked on the rail API."""
+    now = time.time()
+    cached = _station_cache.get(station)
+    if cached and (now - cached["ts"] < STATION_TTL):
+        return cached["services"]
+    if cached:
+        if not cached.get("refreshing"):
+            cached["refreshing"] = True
+            threading.Thread(target=_refresh_station, args=(station,),
+                             daemon=True).start()
+        return cached["services"]
+    # First request for this station since deploy: fetch synchronously.
+    return _refresh_station(station)
 
 
 def _minutes_until(hhmm):
@@ -603,11 +621,24 @@ WEATHER_TTL = 1800
 
 
 def get_weather():
+    """Serve cached forecast instantly; refresh stale data in the
+    background so device polls are never blocked on the weather API."""
     now = time.time()
     if _weather_cache["data"] and (now - _weather_cache["ts"] < WEATHER_TTL):
         return _weather_cache["data"]
     if not OWM_API_KEY:
         return [{"day": "TDY", "high": 0, "low": 0, "icon_name": "clouds"}]
+    if _weather_cache["data"]:
+        if not _weather_cache.get("refreshing"):
+            _weather_cache["refreshing"] = True
+            threading.Thread(target=_refresh_weather, daemon=True).start()
+        return _weather_cache["data"]
+    # No data yet (first request since deploy): fetch synchronously.
+    return _refresh_weather()
+
+
+def _refresh_weather():
+    """Fetch a fresh forecast and update the cache. Blocking."""
     try:
         url = (f"https://api.openweathermap.org/data/2.5/forecast"
                f"?lat={OWM_LAT}&lon={OWM_LON}&appid={OWM_API_KEY}&units=metric")
@@ -650,10 +681,12 @@ def get_weather():
                 label = ["MON","TUE","WED","THU","FRI","SAT","SUN"][wd]
             out.append({"day": label, "high": high, "low": low, "icon_name": mapped})
         _weather_cache["data"] = out
-        _weather_cache["ts"] = now
+        _weather_cache["ts"] = time.time()
+        _weather_cache["refreshing"] = False
         return out
     except Exception as e:
         print("OWM error", e)
+        _weather_cache["refreshing"] = False
         return _weather_cache["data"]
 
 
