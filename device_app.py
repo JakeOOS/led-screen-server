@@ -150,62 +150,6 @@ FONT_TALL_5X11 = {
 }
 
 # =====================================================================
-# --- WEATHER ICONS ---
-# =====================================================================
-ICON_PALETTE = {
-    ' ': (0, 0, 0), 'Y': (255, 240, 0), 'W': (255, 255, 255), 'G': (140, 140, 140), 'C': (0, 200, 255)
-}
-
-# 13x11 pixel icons traced from the reference image.
-ICON_SUN = [
-    "    Y   Y    ","  Y  YYY  Y  ","    YYYYY    ",
-    " Y YYYYYYY Y ","   YYYYYYY   ","   YYYYYYY   ",
-    " Y YYYYYYY Y ","    YYYYY    ","  Y  YYY  Y  ",
-    "    Y   Y    ","             ",
-]
-ICON_PARTLY = [
-    "       YYY   ","     YYYYYYY ","    YYYYYY   ",
-    "  WWYYYYYYY  "," WWWWWYYYYY  "," WWWWWWWWWW  ",
-    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
-    "             ","             ",
-]
-ICON_CLOUDY = [
-    "             ","   WWWW      ","  WWWWWWW    ",
-    " WWWWWWWWWW  ","WWWWWWWWWWWW ","WWWWWWWWWWWW ",
-    "WWWWWWWWWWWW "," WWWWWWWWWW  ","  GGGGGGGG   ",
-    "             ","             ",
-]
-ICON_RAIN = [
-    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
-    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
-    " C  C  C  C  ","  C  C  C    "," C  C  C  C  ",
-    "  C  C  C    ","             ",
-]
-ICON_THUNDER = [
-    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
-    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
-    "    YYYY     ","   YYYYYY    ","    YYYY     ",
-    "C     YY   C ","      Y      ",
-]
-ICON_SNOW = [
-    "   WWWW      ","  WWWWWWW    "," WWWWWWWWWW  ",
-    "WWWWWWWWWWWW ","WWWWWWWWWWWW "," WWWWWWWWWW  ",
-    " W G W G W   ","WGWGWGWGWGW  "," W G W G W   ",
-    "   G   G     ","             ",
-]
-
-# Map OWM condition strings to icons.
-WEATHER_ICONS = {
-    'clear':       ICON_SUN,
-    'clouds':      ICON_CLOUDY,
-    'partly':      ICON_PARTLY,
-    'rain':        ICON_RAIN,
-    'drizzle':     ICON_RAIN,
-    'thunderstorm':ICON_THUNDER,
-    'snow':        ICON_SNOW,
-}
-
-# =====================================================================
 # --- GRAPHICS ENGINE ---
 # =====================================================================
 class Display:
@@ -252,13 +196,6 @@ class Display:
             else:
                 cursor_x += (3 * scale) + spacing
 
-    def draw_pixel_icon(self, icon_array, x, y):
-        for row_idx, row in enumerate(icon_array):
-            for col_idx, char in enumerate(row):
-                if char != ' ':
-                    color = ICON_PALETTE.get(char, COL_WHITE)
-                    self.pixel(x + col_idx, y + row_idx, color)
-
 screen = Display()
 
 # =====================================================================
@@ -297,7 +234,7 @@ def fetch_display_state(current_state):
             headers["x-device-secret"] = DEVICE_SECRET
         # Keep this short: the poll runs inside the render loop, so the
         # screen is frozen for however long this request takes.
-        r = urequests.get(url, headers=headers, timeout=8)
+        r = urequests.get(url, headers=headers, timeout=6)
         if r.status_code == 200:
             data = r.json()
             r.close()
@@ -987,6 +924,7 @@ def main():
     last_message = ""
     last_mode = ""
     priority_until = 0
+    poll_fails = 0
     global CURRENT_BRIGHTNESS, BRIGHTNESS_LUT, current_anim_frame
 
     last_slot = -1
@@ -1002,21 +940,30 @@ def main():
         at_boundary = slot != last_slot
         last_slot = slot
         poll_due = now - last_poll > POLL_INTERVAL
-        overdue = now - last_poll > POLL_INTERVAL * 3
+        overdue = now - last_poll > POLL_INTERVAL * 4
 
         if (poll_due and at_boundary or overdue) and check_wifi():
+            gc.collect()             # give TLS the biggest contiguous block we can
             new_state = fetch_display_state(state)
-            if new_state.get("reboot"):
-                print("Reboot requested by server")
-                time.sleep(1)
-                machine.reset()
-            msg = new_state.get("message", "")
-            if msg and msg != last_message:
-                priority_until = now + SCREEN_SECONDS   # pop a new message up promptly
-            last_message = msg
-            state = new_state
-            sync_tick = now_ticks
-            last_poll = now
+            if new_state is state:
+                # Poll failed. Back off so a bad network patch doesn't
+                # freeze the display every cycle, and DON'T touch the
+                # clock sync — the old epoch/tick pair is still valid.
+                poll_fails = min(poll_fails + 1, 5)
+                last_poll = now - POLL_INTERVAL + 15 * poll_fails
+            else:
+                poll_fails = 0
+                if new_state.get("reboot"):
+                    print("Reboot requested by server")
+                    time.sleep(1)
+                    machine.reset()
+                msg = new_state.get("message", "")
+                if msg and msg != last_message:
+                    priority_until = now + SCREEN_SECONDS   # pop a new message up promptly
+                last_message = msg
+                state = new_state
+                sync_tick = now_ticks
+                last_poll = now
 
         # Design preview: when the server's anim_version changes, fetch the
         # preview animation immediately (version > 0) or restore the normal
