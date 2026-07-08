@@ -30,12 +30,12 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import PlainTextResponse, HTMLResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "24"
+FIRMWARE_VERSION = "25"
 
 OWM_API_KEY   = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
@@ -693,6 +693,41 @@ def _refresh_weather():
 # =====================================================================
 # Device polling endpoint
 # =====================================================================
+# --- Design preview mode ---------------------------------------------
+# While a preview animation is uploaded, every device shows ONLY that
+# animation. The device refetches whenever anim_version changes.
+_preview = {"data": None, "version": 0}
+
+
+@app.post("/api/preview/anim")
+async def upload_preview(request: Request):
+    verify_device_secret(request.headers.get("x-device-secret", ""))
+    body = await request.body()
+    if len(body) < 10:
+        raise HTTPException(400, "Empty or too-small animation")
+    if len(body) > 2_000_000:
+        raise HTTPException(400, "Animation too large (max 2MB)")
+    _preview["data"] = body
+    _preview["version"] = int(time.time())
+    return {"ok": True, "bytes": len(body), "anim_version": _preview["version"]}
+
+
+@app.delete("/api/preview/anim")
+def clear_preview(request: Request):
+    verify_device_secret(request.headers.get("x-device-secret", ""))
+    _preview["data"] = None
+    _preview["version"] = 0
+    return {"ok": True}
+
+
+@app.get("/firmware/preview.bin")
+def get_preview_bin(request: Request):
+    verify_device_secret(request.headers.get("x-device-secret", ""))
+    if not _preview["data"]:
+        raise HTTPException(404, "No preview uploaded")
+    return Response(content=_preview["data"], media_type="application/octet-stream")
+
+
 @app.get("/api/device/{device_id}/display")
 def get_display(device_id: str, request: Request):
     incoming_secret = request.headers.get("x-device-secret", "")
@@ -713,10 +748,20 @@ def get_display(device_id: str, request: Request):
             "tz_offset": uk_tz_offset_seconds(),
         }
 
+    # Preview mode overrides everything: show only the uploaded animation.
+    if _preview["data"]:
+        return {
+            "paired": True, "brightness": 1.0, "allowed_modes": ["ANIM"],
+            "anim_version": _preview["version"],
+            "trains": [], "weather": [], "message": current_message(dev),
+            "reboot": reboot, "epoch": int(time.time()),
+            "tz_offset": uk_tz_offset_seconds(),
+        }
+
     band = get_active_schedule_band(device_id)
     if band:
         resp = display_from_schedule_band(band, dev)
-        resp.update({"paired": True, "reboot": reboot})
+        resp.update({"paired": True, "reboot": reboot, "anim_version": 0})
         return resp
 
     # Legacy fallback
@@ -724,6 +769,7 @@ def get_display(device_id: str, request: Request):
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
         "paired": True, "brightness": bright, "allowed_modes": allowed,
+        "anim_version": 0,
         "trains": get_trains(boards), "weather": get_weather(),
         "message": current_message(dev),
         "reboot": reboot, "epoch": int(time.time()),
