@@ -115,7 +115,7 @@ class Simulator:
             device_app.draw_train_dashboard(data, now_ticks)
         elif self.mode == "WEATHER":
             data = state["weather"] if (state and state.get("weather")) else SAMPLE_WEATHER
-            device_app.draw_weather_2day(data, now_ticks)
+            device_app.draw_weather_3col(data, now_ticks)
         elif self.mode == "PHONE":
             msg = state["message"] if (state and state.get("message")) else SAMPLE_MESSAGE
             device_app.draw_phone_screen(msg, now_ticks)
