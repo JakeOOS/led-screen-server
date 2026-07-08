@@ -607,17 +607,19 @@ def draw_weather_split(data, ref_ticks):
     graphics.set_pen(screen.create_pen(COL_WHITE))
     graphics.line(52, 2, 52, 30)
 
+    # Matches the mockup: both sides use the same font, both pairs at the
+    # bottom — high row at y=18, low row at y=25 (1px off the bottom edge).
     today = data[0]
     tom = data[1] if len(data) > 1 else None
     hi = str(today.get("high", "")); lo = str(today.get("low", ""))
-    screen.text(hi, 50 - _text_w(hi, FONT_4X6), 7, COL_RED, font=FONT_4X6)
-    screen.text(lo, 50 - _text_w(lo, FONT_4X6), 19, COL_BLUE, font=FONT_4X6)
+    screen.text(hi, 50 - _text_w(hi, FONT_4X6), 18, COL_RED, font=FONT_4X6)
+    screen.text(lo, 50 - _text_w(lo, FONT_4X6), 25, COL_BLUE, font=FONT_4X6)
     if tom:
         hi2 = str(tom.get("high", "")); lo2 = str(tom.get("low", ""))
-        screen.text(hi2, 53 + max(0, (11 - _text_w(hi2, FONT_3X5)) // 2), 8,
-                    COL_RED, font=FONT_3X5)
-        screen.text(lo2, 53 + max(0, (11 - _text_w(lo2, FONT_3X5)) // 2), 19,
-                    COL_BLUE, font=FONT_3X5)
+        screen.text(hi2, 53 + max(0, (11 - _text_w(hi2, FONT_4X6)) // 2), 18,
+                    COL_RED, font=FONT_4X6)
+        screen.text(lo2, 53 + max(0, (11 - _text_w(lo2, FONT_4X6)) // 2), 25,
+                    COL_BLUE, font=FONT_4X6)
 
 
 def draw_status(lines, color=COL_CYAN):
