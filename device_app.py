@@ -270,9 +270,9 @@ def fetch_display_state(current_state):
         headers = {}
         if DEVICE_SECRET:
             headers["x-device-secret"] = DEVICE_SECRET
-        # 20s: the display endpoint fetches trains/weather upstream on a
-        # cold cache and can legitimately take more than 10s to respond.
-        r = urequests.get(url, headers=headers, timeout=20)
+        # Keep this short: the poll runs inside the render loop, so the
+        # screen is frozen for however long this request takes.
+        r = urequests.get(url, headers=headers, timeout=8)
         if r.status_code == 200:
             data = r.json()
             r.close()
@@ -838,11 +838,22 @@ def main():
     priority_until = 0
     global CURRENT_BRIGHTNESS, BRIGHTNESS_LUT, current_anim_frame
 
+    last_slot = -1
+
     while True:
         now = time.time()
         now_ticks = time.ticks_ms()
 
-        if check_wifi() and (now - last_poll > POLL_INTERVAL):
+        # Poll on a screen-change boundary so any network stall lands
+        # between screens instead of freezing mid-animation. If we're badly
+        # overdue (single-screen cycle), poll anyway.
+        slot = int(now // SCREEN_SECONDS)
+        at_boundary = slot != last_slot
+        last_slot = slot
+        poll_due = now - last_poll > POLL_INTERVAL
+        overdue = now - last_poll > POLL_INTERVAL * 3
+
+        if (poll_due and at_boundary or overdue) and check_wifi():
             new_state = fetch_display_state(state)
             if new_state.get("reboot"):
                 print("Reboot requested by server")
