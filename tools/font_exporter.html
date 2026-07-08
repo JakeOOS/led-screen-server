@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VOXEL Font Exporter</title>
+<style>
+  :root{--bg:#0b0e14;--card:#151a23;--card2:#1c222e;--line:#28303d;
+    --text:#e7ecf3;--dim:#8a94a6;--accent:#3da9fc}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:32px;max-width:900px;margin-inline:auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:14px;margin-bottom:24px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+  label{display:block;color:var(--dim);font-size:12px;margin:14px 0 5px;text-transform:uppercase;letter-spacing:1px}
+  label:first-child{margin-top:0}
+  input[type=text],select{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--text);border-radius:10px;padding:11px 14px;font-size:16px}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:140px}
+  input[type=range]{width:100%}
+  input[type=color]{width:44px;height:34px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card2);padding:2px;cursor:pointer}
+  .val{color:var(--text);font-size:13px;font-weight:600;margin-left:6px}
+  #previewWrap{background:
+    repeating-conic-gradient(#222 0% 25%, #2c2c2c 0% 50%) 0 0/16px 16px;
+    border:1px solid var(--line);border-radius:10px;padding:16px;overflow:auto;
+    display:flex;justify-content:center;align-items:center;min-height:120px}
+  #previewWrap.black{background:#000}
+  canvas{image-rendering:pixelated;display:block}
+  button{border:none;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:600;
+    color:#fff;background:var(--accent);cursor:pointer;margin-top:18px}
+  button:active{opacity:.85}
+  .hint{color:var(--dim);font-size:12px;margin-top:10px}
+  .toggle{display:flex;align-items:center;gap:8px;color:var(--text);font-size:14px;margin-top:8px}
+  .toggle input{width:auto}
+</style>
+</head>
+<body>
+<h1>VOXEL Font Exporter</h1>
+<div class="sub">Pixel-perfect PNGs of the LED screen's fonts, for After Effects. The renderer matches the firmware exactly (same glyphs, spacing, and fallback for unknown characters).</div>
+
+<div class="panel">
+  <label>Text</label>
+  <input type="text" id="text" value="HELLO 123" autofocus>
+
+  <div class="row">
+    <div>
+      <label>Font</label>
+      <select id="font">
+        <option value="FONT_3X5">3×5 — main text font</option>
+        <option value="FONT_BOLD_5X5">Bold 5×5 — headings / temps</option>
+        <option value="FONT_TALL_5X11">Tall 5×11 — clock digits (0-9 and : only)</option>
+      </select>
+    </div>
+    <div>
+      <label>Pixel size (px per LED) <span class="val" id="scaleVal">16</span></label>
+      <input type="range" id="scale" min="1" max="40" value="16">
+    </div>
+    <div>
+      <label>Letter spacing (LEDs) <span class="val" id="spacingVal">1</span></label>
+      <input type="range" id="spacing" min="0" max="4" value="1">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Pixel colour</label>
+      <input type="color" id="color" value="#ffffff">
+    </div>
+    <div>
+      <label>Background</label>
+      <select id="bg">
+        <option value="transparent">Transparent</option>
+        <option value="black">Black</option>
+      </select>
+    </div>
+    <div>
+      <label>LED look</label>
+      <div class="toggle"><input type="checkbox" id="ledGap"> <span>Gap between pixels (LED matrix feel)</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <label>Preview</label>
+  <div id="previewWrap"><canvas id="canvas"></canvas></div>
+  <button id="download">Download PNG</button>
+  <div class="hint" id="dims"></div>
+  <div class="hint">Tip: in After Effects, import at 100% and avoid resampling — the PNG is already scaled with hard pixel edges. For the authentic screen look use black background and the LED-gap option.</div>
+</div>
+
+<script>
+// Glyph data lifted verbatim from device_app.py (firmware) — do not edit here.
+const FONTS = {
+FONT_3X5: {
+ 'A':[" # ","# #","###","# #","# #"],'B':["## ","# #","## ","# #","## "],
+ 'C':[" ##","#  ","#  ","#  "," ##"],'D':["## ","# #","# #","# #","## "],
+ 'E':["###","#  ","## ","#  ","###"],'F':["###","#  ","## ","#  ","#  "],
+ 'G':[" ##","#  ","# #","###","  #"],'H':["# #","# #","###","# #","# #"],
+ 'I':["###"," # "," # "," # ","###"],'J':["###","  #","  #","# #"," # "],
+ 'K':["# #","# #","## ","# #","# #"],'L':["#  ","#  ","#  ","#  ","###"],
+ 'M':["# #","###","###","# #","# #"],'N':[" # ","# #","# #","# #","# #"],
+ 'O':[" # ","# #","# #","# #"," # "],'P':["## ","# #","## ","#  ","#  "],
+ 'Q':[" # ","# #","# #"," ##","  #"],'R':["## ","# #","## ","# #","# #"],
+ 'S':[" ##","#  "," # ","  #","## "],'T':["###"," # "," # "," # "," # "],
+ 'U':["# #","# #","# #","# #"," # "],'V':["# #","# #","# #"," # "," # "],
+ 'W':["# #","# #","# #","###","# #"],'X':["# #"," # "," # "," # ","# #"],
+ 'Y':["# #","# #"," # "," # "," # "],'Z':["###","  #"," # ","#  ","###"],
+ '0':["###","# #","# #","# #","###"],'1':[" # ","## "," # "," # ","###"],
+ '2':["###","  #"," # ","#  ","###"],'3':["## ","  #"," ##","  #","## "],
+ '4':["# #","# #","###","  #","  #"],'5':["###","#  ","###","  #","###"],
+ '6':["###","#  ","###","# #","###"],'7':["###","  #","  #"," # "," # "],
+ '8':["###","# #","###","# #","###"],'9':["###","# #","###","  #","  #"],
+ ' ':["   ","   ","   ","   ","   "],'-':["   ","   ","###","   ","   "],
+ '|':[" # "," # "," # "," # "," # "]
+},
+FONT_BOLD_5X5: {
+ 'A':[" ### ","## ##","#####","## ##","## ##"],'B':["#### ","## ##","#### ","## ##","#### "],
+ 'C':[" ####","##   ","##   ","##   "," ####"],'D':["#### ","## ##","## ##","## ##","#### "],
+ 'E':["#####","##   ","###  ","##   ","#####"],'F':["#####","##   ","###  ","##   ","##   "],
+ 'G':[" ####","##   ","## ##","## ##"," ####"],'H':["## ##","## ##","#####","## ##","## ##"],
+ 'I':["###"," # "," # "," # ","###"],'J':["  ###","   ##","   ##","## ##"," ### "],
+ 'K':["## ##","## ##","###  ","## ##","## ##"],'L':["##   ","##   ","##   ","##   ","#####"],
+ 'M':["## ##","#####","#####","## ##","## ##"],'N':["## ##","#### ","#####","## ##","## ##"],
+ 'O':[" ### ","## ##","## ##","## ##"," ### "],'P':["#### ","## ##","#### ","##   ","##   "],
+ 'Q':[" ### ","## ##","## ##","## ##"," ####"],'R':["#### ","## ##","#### ","## ##","## ##"],
+ 'S':[" ####","##   "," ### ","   ##","#### "],'T':["#####","  ##  ","  ##  ","  ##  ","  ##  "],
+ 'U':["## ##","## ##","## ##","## ##"," ### "],'V':["## ##","## ##","## ##"," ### ","  #  "],
+ 'W':["## ##","#####","#####","#####","## ##"],'X':["## ##","## ##"," ### ","## ##","## ##"],
+ 'Y':["## ##","## ##"," ### ","  ## ","  ## "],'Z':["#####","   ##","  ## "," ##  ","#####"],
+ '0':[" ### ","## ##","## ##","## ##"," ### "],'1':["  ## "," ### ","  ## ","  ## ","#####"],
+ '2':["#### ","     ##"," ### ","##   ","#####"],'3':["#### ","     ##"," ### ","     ##","#### "],
+ '4':["## ##","## ##","#####","   ##","   ##"],'5':["#####","##   ","#### ","     ##","#### "],
+ '6':[" ### ","##   ","#### ","## ##"," ### "],'7':["#####","   ##","  ## "," ##  "," ##  "],
+ '8':[" ### ","## ##"," ### ","## ##"," ### "],'9':[" ### ","## ##"," ####","   ##"," ### "],
+ ' ':["     ","     ","     ","     ","     "],'-':["     ","     ","#####","     ","     "],
+ '?':[" ### ","   ##","  ## ","     ","  ## "],'!':["  ## ","  ## ","  ## ","     ","  ## "]
+},
+FONT_TALL_5X11: {
+ '0':[" ### ","## ##","## ##","## ##","## ##","## ##","## ##","## ##","## ##","## ##"," ### "],
+ '1':["  ## "," ### ","  ## ","  ## ","  ## ","  ## ","  ## ","  ## ","  ## ","  ## ","#####"],
+ '2':[" ### ","## ##","   ##","   ##","  ## "," ##  ","##   ","##   ","##   ","##   ","#####"],
+ '3':["#####","   ##","   ##","   ##","  ###","   ##","   ##","   ##","   ##","   ##","#####"],
+ '4':["   ##","  ###"," ## #","## ##","## ##","#####","   ##","   ##","   ##","   ##","   ##"],
+ '5':["#####","##   ","##   ","#### ","   ##","   ##","   ##","   ##","## ##","## ##"," ### "],
+ '6':[" ### ","##   ","##   ","##   ","#### ","## ##","## ##","## ##","## ##","## ##"," ### "],
+ '7':["#####","   ##","   ##","   ##","  ## ","  ## ","  ## "," ##  "," ##  "," ##  "," ##  "],
+ '8':[" ### ","## ##","## ##","## ##"," ### ","## ##","## ##","## ##","## ##","## ##"," ### "],
+ '9':[" ### ","## ##","## ##","## ##","## ##"," ####","   ##","   ##","   ##","## ##"," ### "],
+ ':':["   ","   ","   "," ##"," ##","   "," ##"," ##","   ","   ","   "]
+}
+};
+
+const $ = id => document.getElementById(id);
+const canvas = $("canvas"), ctx2 = canvas.getContext("2d");
+
+// Mirrors Display.text() in device_app.py: per-char advance is
+// glyph width + spacing; unknown characters advance 3 + spacing.
+function layout(text, font, spacing){
+  const glyphs = FONTS[font];
+  const rows = Object.values(glyphs)[0].length;
+  let w = 0; const placed = [];
+  for(const ch of text.toUpperCase()){
+    const g = glyphs[ch];
+    if(g){ placed.push({g, x: w}); w += g[0].length + spacing; }
+    else  { w += 3 + spacing; }
+  }
+  if(placed.length || w) w -= spacing;   // no trailing gap
+  return {placed, w: Math.max(w, 1), h: rows};
+}
+
+function render(){
+  const text = $("text").value || " ";
+  const font = $("font").value;
+  const scale = +$("scale").value;
+  const spacing = +$("spacing").value;
+  const color = $("color").value;
+  const bg = $("bg").value;
+  const gap = $("ledGap").checked ? Math.max(1, Math.round(scale/8)) : 0;
+
+  const {placed, w, h} = layout(text, font, spacing);
+  canvas.width = w * scale; canvas.height = h * scale;
+
+  if(bg === "black"){ ctx2.fillStyle = "#000"; ctx2.fillRect(0,0,canvas.width,canvas.height); }
+  else ctx2.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx2.fillStyle = color;
+  for(const {g, x} of placed){
+    g.forEach((row, ry) => {
+      for(let rx = 0; rx < row.length; rx++){
+        if(row[rx] !== " "){
+          ctx2.fillRect((x+rx)*scale, ry*scale, scale-gap, scale-gap);
+        }
+      }
+    });
+  }
+
+  $("previewWrap").className = bg === "black" ? "black" : "";
+  $("dims").textContent = `Grid: ${w}×${h} LEDs → PNG: ${canvas.width}×${canvas.height}px`;
+  $("scaleVal").textContent = scale;
+  $("spacingVal").textContent = spacing;
+}
+
+$("download").addEventListener("click", () => {
+  const text = ($("text").value || "text").trim().replace(/[^\w-]+/g,"_").slice(0,30);
+  const a = document.createElement("a");
+  a.download = `voxel_${$("font").value.toLowerCase()}_${text}.png`;
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+});
+
+["text","font","scale","spacing","color","bg","ledGap"].forEach(id =>
+  $(id).addEventListener("input", render));
+render();
+</script>
+</body>
+</html>

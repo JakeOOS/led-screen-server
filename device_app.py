@@ -289,6 +289,7 @@ def fetch_display_state(current_state):
                 "reboot": data.get("reboot", False),
                 "epoch": data.get("epoch", 0),
                 "tz_offset": data.get("tz_offset", 0),
+                "anim_version": data.get("anim_version", 0),
                 "paired": data.get("paired", True),
                 "pair_code": data.get("pair_code", ""),
             }
@@ -373,16 +374,20 @@ def build_anim_pens():
         pens.append(cp(lut[pal[i * 3]], lut[pal[i * 3 + 1]], lut[pal[i * 3 + 2]]))
     ANIM["pens"] = pens
 
-def fetch_animation():
+def fetch_animation(url=None, secret=False):
     """Download the .bin, being careful with limited flash. Returns a short
-    status string: 'OK', 'HTTP nnn', 'FULL nn' (disk), 'BAD SIZE', or 'ERR n'."""
+    status string: 'OK', 'HTTP nnn', 'FULL nn' (disk), 'BAD SIZE', or 'ERR n'.
+    url defaults to the standard ANIM_URL; secret=True sends the device
+    secret header (needed for the server's preview endpoint)."""
     print("Fetching animation... free:", free_bytes())
     gc.collect()
     # Clear any half-written temp from a previous failed attempt.
     try: os.remove("anim.tmp")
     except OSError: pass
     try:
-        r = urequests.get(ANIM_URL + "?t=" + str(time.ticks_ms()), timeout=20)
+        headers = {"x-device-secret": DEVICE_SECRET} if secret else {}
+        r = urequests.get((url or ANIM_URL) + "?t=" + str(time.ticks_ms()),
+                          headers=headers, timeout=20)
         if r.status_code != 200:
             code = r.status_code
             r.close()
@@ -832,6 +837,7 @@ def main():
     # If it failed, poll again straight away so live data appears quickly.
     last_poll = time.time() if have_server else time.time() - POLL_INTERVAL
     last_anim_fetch = -9999
+    last_anim_version = 0
     last_brightness = -1
     last_message = ""
     last_mode = ""
@@ -867,8 +873,26 @@ def main():
             sync_tick = now_ticks
             last_poll = now
 
-        # Refresh the animation hourly, but only if the schedule ever uses it.
-        if check_wifi() and ("ANIM" in state.get("allowed_modes", [])) and (now - last_anim_fetch > ANIM_REFRESH):
+        # Design preview: when the server's anim_version changes, fetch the
+        # preview animation immediately (version > 0) or restore the normal
+        # animation (version back to 0).
+        av = state.get("anim_version", 0)
+        if av != last_anim_version and check_wifi():
+            draw_status(["GETTING", "PREVIEW" if av else "ANIM"])
+            if av:
+                result = fetch_animation(SERVER_URL + "/firmware/preview.bin", secret=True)
+            else:
+                result = fetch_animation()
+            if result != "OK":
+                draw_status(["ANIM FAIL", result], COL_RED)
+                time.sleep(2)
+            last_anim_version = av
+            last_anim_fetch = now
+            current_anim_frame = -1
+
+        # Refresh the animation hourly, but only if the schedule ever uses it
+        # (and never while a preview is active — it would overwrite it).
+        if check_wifi() and last_anim_version == 0 and ("ANIM" in state.get("allowed_modes", [])) and (now - last_anim_fetch > ANIM_REFRESH):
             draw_status(["GETTING", "ANIM"])
             result = fetch_animation()
             if result != "OK":

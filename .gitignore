@@ -5,3 +5,6 @@ __pycache__/
 
 # device bootloader — contains WiFi credentials, repo is public
 ota_bootloader.py
+
+# local backups — may contain device credentials
+backups/
