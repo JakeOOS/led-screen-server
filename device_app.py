@@ -411,43 +411,42 @@ def fetch_animation(url=None, secret=False, dest="anim.bin"):
         return "ERR"
 
 # =====================================================================
-# --- SPLIT WEATHER-SCREEN ANIMATIONS ---
+# --- WEATHER-SCREEN ANIMATION ---
 # =====================================================================
-# Left 52x32 = today's condition, 1px divider, right 11x32 = tomorrow's.
-# Clips live on the server (weather_anims/); the device keeps one file
-# per side and refetches when the forecast condition or the server's
-# clip set (wanim_version) changes.
+# One full-frame 64x32 clip showing today's condition; the temps and a
+# short divider are overlaid on top. Clips live on the server
+# (weather_anims/); the device refetches when the forecast condition or
+# the server's clip set (wanim_version) changes.
 WEATHER_ANIM_CONDS = {"clear": "sunny", "clouds": "cloudy", "rain": "rain",
                       "thunderstorm": "stormy", "snow": "snow"}
 WANIM = {
-    "L": {"path": "wthr_L.bin", "x": 0,  "cond": "", "loaded": False,
-          "pens": None, "cur": -1},
-    # Right clip is 12px wide and starts ON the divider column (x=52);
-    # the white line is drawn after it, on top of its first column.
-    "R": {"path": "wthr_R.bin", "x": 52, "cond": "", "loaded": False,
+    "L": {"path": "wthr_L.bin", "x": 0, "cond": "", "loaded": False,
           "pens": None, "cur": -1},
 }
 WSTATE = {"drawn": False, "version": -1, "last_try": -9999}
 
 
 def _wanim_load_conds():
-    """Restore which conditions the on-flash clips hold (survives reboot)."""
+    """Restore which condition the on-flash clip holds (survives reboot)."""
     try:
         with open("wthr_meta.txt") as f:
             parts = f.read().strip().split(",")
-        if len(parts) == 3:
+        if len(parts) == 2:
             WSTATE["version"] = int(parts[0])
             WANIM["L"]["cond"] = parts[1]
-            WANIM["R"]["cond"] = parts[2]
     except (OSError, ValueError):
+        pass
+    # Tidy up the strip clip from the abandoned split design.
+    try:
+        os.remove("wthr_R.bin")
+    except OSError:
         pass
 
 
 def _wanim_save_conds():
     try:
         with open("wthr_meta.txt", "w") as f:
-            f.write("%d,%s,%s" % (WSTATE["version"],
-                                  WANIM["L"]["cond"], WANIM["R"]["cond"]))
+            f.write("%d,%s" % (WSTATE["version"], WANIM["L"]["cond"]))
     except OSError:
         pass
 
@@ -524,39 +523,33 @@ def _text_w(s, font, spacing=1):
 
 
 def draw_weather_split(data, ref_ticks):
-    """Today (left, big) | tomorrow (right, strip). Animated backgrounds when
-    the condition clips are on flash; plain black otherwise. Temps overlaid:
-    today's high/low right-aligned against the divider, tomorrow's centred
-    on the strip."""
+    """Today's condition animates across the full frame. Temp block at the
+    bottom right: today's high/low left of a short divider, tomorrow's
+    right of it. The divider is only as tall as the two text rows."""
     if not data:
         screen.clear()
         screen.text("WEATHER...", 5, 12, COL_WHITE, font=FONT_3X5)
         return
-    drew_l = _wanim_draw("L", ref_ticks)
-    drew_r = _wanim_draw("R", ref_ticks)
-    if not (drew_l or drew_r or not WSTATE["drawn"]):
+    drew = _wanim_draw("L", ref_ticks)
+    if not (drew or not WSTATE["drawn"]):
         return                      # nothing changed on screen
     if not WSTATE["drawn"]:
         screen.clear()              # first draw after entering the mode
     WSTATE["drawn"] = True
 
-    # Divider: 2px inset top and bottom.
+    # Temp rows: high at y=18, low at y=25 (1px off the bottom edge).
+    # Divider spans exactly the text block: y=18..30.
     graphics.set_pen(screen.create_pen(COL_WHITE))
-    graphics.line(52, 2, 52, 30)
+    graphics.line(52, 18, 52, 31)
 
-    # Matches the mockup: both sides use the same font, both pairs at the
-    # bottom — high row at y=18, low row at y=25 (1px off the bottom edge).
     today = data[0]
     tom = data[1] if len(data) > 1 else None
     hi = str(today.get("high", "")); lo = str(today.get("low", ""))
     screen.text(hi, 50 - _text_w(hi, FONT_4X6), 18, COL_RED, font=FONT_4X6)
     screen.text(lo, 50 - _text_w(lo, FONT_4X6), 25, COL_BLUE, font=FONT_4X6)
     if tom:
-        hi2 = str(tom.get("high", "")); lo2 = str(tom.get("low", ""))
-        screen.text(hi2, 53 + max(0, (11 - _text_w(hi2, FONT_4X6)) // 2), 18,
-                    COL_RED, font=FONT_4X6)
-        screen.text(lo2, 53 + max(0, (11 - _text_w(lo2, FONT_4X6)) // 2), 25,
-                    COL_BLUE, font=FONT_4X6)
+        screen.text(str(tom.get("high", "")), 54, 18, COL_RED, font=FONT_4X6)
+        screen.text(str(tom.get("low", "")), 54, 25, COL_BLUE, font=FONT_4X6)
 
 
 def draw_status(lines, color=COL_CYAN):
@@ -993,41 +986,37 @@ def main():
             last_anim_fetch = now
             current_anim_frame = -1
 
-        # Split-weather clips: refetch a side when its forecast condition
-        # changes, or everything when the server's clip set changes. Done at
-        # screen boundaries so the stall lands between screens.
+        # Weather clip: refetch when today's forecast condition changes, or
+        # when the server's clip set changes. Done at screen boundaries so
+        # the stall lands between screens.
         if "WEATHER" in state.get("allowed_modes", []):
             wv = state.get("wanim_version", 0)
             if wv != WSTATE["version"]:
                 WANIM["L"]["cond"] = ""
-                WANIM["R"]["cond"] = ""
                 WSTATE["version"] = wv
                 _wanim_save_conds()
             wx = state.get("weather") or []
             if wx and wv and at_boundary and (now - WSTATE["last_try"] > 30) and check_wifi():
-                want_l = WEATHER_ANIM_CONDS.get(wx[0].get("icon_name", ""), "")
-                tom_wx = wx[1] if len(wx) > 1 else wx[0]
-                want_r = WEATHER_ANIM_CONDS.get(tom_wx.get("icon_name", ""), "")
-                for s, want in (("L", want_l), ("R", want_r)):
-                    sl = WANIM[s]
-                    if want and want != sl["cond"]:
-                        WSTATE["last_try"] = now
-                        res = fetch_animation(
-                            SERVER_URL + "/firmware/weather/" + want + "_" + s + ".bin",
-                            dest=sl["path"])
-                        if res == "OK":
-                            sl["cond"] = want
-                            sl["loaded"] = False
-                            sl["cur"] = -1
-                            WSTATE["drawn"] = False
-                            _wanim_save_conds()
-                        elif res.startswith("HTTP"):
-                            # Clip not on the server (yet) — stop retrying
-                            # until the condition or clip set changes.
-                            sl["cond"] = want
-                            _wanim_save_conds()
-                        else:
-                            print("Weather anim fetch", s, want, res)
+                want = WEATHER_ANIM_CONDS.get(wx[0].get("icon_name", ""), "")
+                sl = WANIM["L"]
+                if want and want != sl["cond"]:
+                    WSTATE["last_try"] = now
+                    res = fetch_animation(
+                        SERVER_URL + "/firmware/weather/" + want + "_L.bin",
+                        dest=sl["path"])
+                    if res == "OK":
+                        sl["cond"] = want
+                        sl["loaded"] = False
+                        sl["cur"] = -1
+                        WSTATE["drawn"] = False
+                        _wanim_save_conds()
+                    elif res.startswith("HTTP"):
+                        # Clip not on the server (yet) — stop retrying
+                        # until the condition or clip set changes.
+                        sl["cond"] = want
+                        _wanim_save_conds()
+                    else:
+                        print("Weather anim fetch", want, res)
 
         # Apply brightness from the schedule when it changes.
         if state["brightness"] != last_brightness:
@@ -1036,9 +1025,7 @@ def main():
             screen.reset_pens()
             ANIM["pens"] = None          # rebuild palette pens at new brightness
             WANIM["L"]["pens"] = None
-            WANIM["R"]["pens"] = None
             WANIM["L"]["cur"] = -1
-            WANIM["R"]["cur"] = -1
             WSTATE["drawn"] = False
             current_anim_frame = -1
             last_brightness = state["brightness"]
@@ -1081,7 +1068,6 @@ def main():
         if mode == "WEATHER" and last_mode != "WEATHER":
             WSTATE["drawn"] = False
             WANIM["L"]["cur"] = -1
-            WANIM["R"]["cur"] = -1
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
