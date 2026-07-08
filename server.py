@@ -656,14 +656,15 @@ def _refresh_weather():
                 cond = item["weather"][0]["main"].lower()
                 if "rain" in cond or "drizzle" in cond:
                     d["icons"].append("rain")
-                elif "clear" in cond:
-                    d["icons"].append("clear")
                 elif "snow" in cond:
                     d["icons"].append("snow")
                 elif "thunder" in cond:
                     d["icons"].append("thunderstorm")
                 else:
-                    d["icons"].append("clouds")
+                    # OWM calls 11-25% coverage "Clouds" ("few clouds"),
+                    # which reads as a sunny day. Judge by actual coverage.
+                    pct = (item.get("clouds") or {}).get("all", 100)
+                    d["icons"].append("clear" if pct <= 40 else "clouds")
         out = []
         for i in range(min(3, len(order))):
             dd = days[order[i]]
