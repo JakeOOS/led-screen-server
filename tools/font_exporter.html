@@ -88,6 +88,7 @@
   <label>Preview</label>
   <div id="previewWrap"><canvas id="canvas"></canvas></div>
   <button id="download">Download PNG</button>
+  <button id="download1x" style="background:var(--card2);border:1px solid var(--line);margin-left:8px">Download 1:1 PNG (actual LED pixels)</button>
   <div class="hint" id="dims"></div>
   <div class="hint">Tip: in After Effects, import at 100% and avoid resampling — the PNG is already scaled with hard pixel edges. For the authentic screen look use black background and the LED-gap option.</div>
 </div>
@@ -204,11 +205,36 @@ function render(){
   $("spacingVal").textContent = spacing;
 }
 
-$("download").addEventListener("click", () => {
+function slugName(suffix){
   const text = ($("text").value || "text").trim().replace(/[^\w-]+/g,"_").slice(0,30);
+  return `voxel_${$("font").value.toLowerCase()}_${text}${suffix}.png`;
+}
+
+$("download").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.download = `voxel_${$("font").value.toLowerCase()}_${text}.png`;
+  a.download = slugName("");
   a.href = canvas.toDataURL("image/png");
+  a.click();
+});
+
+// True LED resolution: 1 pixel per LED, no gap, regardless of preview scale.
+$("download1x").addEventListener("click", () => {
+  const {placed, w, h} = layout($("text").value || " ", $("font").value, +$("spacing").value);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g2 = c.getContext("2d");
+  if($("bg").value === "black"){ g2.fillStyle = "#000"; g2.fillRect(0,0,w,h); }
+  g2.fillStyle = $("color").value;
+  for(const {g, x} of placed){
+    g.forEach((row, ry) => {
+      for(let rx = 0; rx < row.length; rx++){
+        if(row[rx] !== " ") g2.fillRect(x+rx, ry, 1, 1);
+      }
+    });
+  }
+  const a = document.createElement("a");
+  a.download = slugName(`_${w}x${h}`);
+  a.href = c.toDataURL("image/png");
   a.click();
 });
 
