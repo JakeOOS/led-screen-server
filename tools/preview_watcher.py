@@ -39,13 +39,34 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp"}
 POLL_SECONDS = 2
 
 
+def is_exact_multiple(w, h):
+    """True when the source is a clean multiple of 64x32 (e.g. a 640x320
+    After Effects comp) — then nearest-neighbour downscaling keeps pixel
+    art crisp instead of smoothing it."""
+    return w % W == 0 and h % H == 0 and w // W == h // H
+
+
+def video_size(path):
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=20).stdout.strip()
+        w, h = map(int, out.split(",")[:2])
+        return w, h
+    except Exception:
+        return None
+
+
 def image_to_frame(path, fit="cover"):
     """Load a still image and scale it to 64x32 the same way ffmpeg does."""
     img = Image.open(path).convert("RGB")
     src_w, src_h = img.size
+    resample = Image.NEAREST if is_exact_multiple(src_w, src_h) else Image.LANCZOS
     scale = (max if fit == "cover" else min)(W / src_w, H / src_h)
     new_w, new_h = max(1, round(src_w * scale)), max(1, round(src_h * scale))
-    img = img.resize((new_w, new_h), Image.LANCZOS)
+    img = img.resize((new_w, new_h), resample)
     canvas = Image.new("RGB", (W, H), (0, 0, 0))
     canvas.paste(img, ((W - new_w) // 2, (H - new_h) // 2))
     return canvas
@@ -55,9 +76,13 @@ def convert(path, colors, fit):
     ext = os.path.splitext(path)[1].lower()
     if ext in IMAGE_EXT:
         return build_anim_bytes([image_to_frame(path, fit)], colors, dither=False)
+    size = video_size(path)
+    nearest = bool(size and is_exact_multiple(*size))
+    if nearest:
+        print(f"  {size[0]}x{size[1]} is an exact multiple of 64x32 -> crisp nearest-neighbour scaling")
     tmpdir = tempfile.mkdtemp(prefix="voxel_preview_")
     try:
-        frames = extract_frames(path, tmpdir, fps=10, fit=fit, nearest=False)
+        frames = extract_frames(path, tmpdir, fps=10, fit=fit, nearest=nearest)
         return build_anim_bytes(frames, colors, dither=False)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
