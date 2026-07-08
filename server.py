@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "22"
+FIRMWARE_VERSION = "23"
 
 OWM_API_KEY   = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
