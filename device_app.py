@@ -270,7 +270,9 @@ def fetch_display_state(current_state):
         headers = {}
         if DEVICE_SECRET:
             headers["x-device-secret"] = DEVICE_SECRET
-        r = urequests.get(url, headers=headers, timeout=10)
+        # 20s: the display endpoint fetches trains/weather upstream on a
+        # cold cache and can legitimately take more than 10s to respond.
+        r = urequests.get(url, headers=headers, timeout=20)
         if r.status_code == 200:
             data = r.json()
             r.close()
