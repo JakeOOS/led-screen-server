@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "31"
+FIRMWARE_VERSION = "32"
 
 OWM_API_KEY   = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
@@ -85,6 +85,7 @@ TYPE_MODES = {
     "clock":     "CLOCK",
     "message":   "PHONE",
     "animation": "ANIM",
+    "news":      "NEWS",
 }
 VALID_TYPES = set(TYPE_MODES.keys())
 
@@ -494,6 +495,7 @@ def display_from_schedule_band(band, dev):
     screen_durations = {}
     trains_boards = None
     has_weather = False
+    news_interests = None
 
     for slot in slots:
         screen = slot.get("screen") or {}
@@ -507,6 +509,8 @@ def display_from_schedule_band(band, dev):
             trains_boards = cfg.get("boards") or DEFAULT_BOARDS
         if stype == "weather":
             has_weather = True
+        if stype == "news" and not news_interests:
+            news_interests = (cfg.get("interests") or "").strip() or None
 
     return {
         "brightness": brightness,
@@ -517,6 +521,7 @@ def display_from_schedule_band(band, dev):
         "message": current_message(dev),
         "epoch": int(time.time()),
         "tz_offset": uk_tz_offset_seconds(),
+        "_news_interests": news_interests,
     }
 
 
@@ -692,6 +697,125 @@ def _refresh_weather():
 
 
 # =====================================================================
+# News (Claude-curated headlines)
+# =====================================================================
+# Hourly: fetch RSS headlines, ask Claude to pick the one story most worth
+# showing on the screen given the configured interests — or nothing at all.
+# Serves stale instantly and refreshes in a background thread, like weather.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+NEWS_INTERESTS = os.environ.get(
+    "NEWS_INTERESTS",
+    "major UK and world events, science, technology, London")
+NEWS_FEEDS = [
+    "https://feeds.bbci.co.uk/news/rss.xml",
+    "https://feeds.bbci.co.uk/news/technology/rss.xml",
+]
+NEWS_TTL = 3600
+
+_news_cache = {"ts": 0.0, "text": "", "last_story": "", "refreshing": False,
+               "interests": None}
+
+
+def _fetch_headlines():
+    import xml.etree.ElementTree as ET
+    out = []
+    for url in NEWS_FEEDS:
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code != 200:
+                continue
+            root = ET.fromstring(r.content)
+            for item in list(root.iter("item"))[:15]:
+                title = (item.findtext("title") or "").strip()
+                desc = (item.findtext("description") or "").strip()
+                if title:
+                    out.append(f"- {title}" + (f" — {desc[:150]}" if desc else ""))
+        except Exception as e:
+            print("RSS error", url, e)
+    return out
+
+
+def _refresh_news(interests):
+    try:
+        headlines = _fetch_headlines()
+        if not headlines:
+            _news_cache["refreshing"] = False
+            return _news_cache["text"]
+        import anthropic
+        client = anthropic.Anthropic()
+        last = _news_cache["last_story"]
+        response = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=500,
+            output_config={"effort": "low"},
+            system=(
+                "You curate a tiny news ticker on a 64x32 LED matrix in a home. "
+                "You are shown current headlines once an hour. Pick the SINGLE "
+                "story most worth the household knowing about, judged by "
+                "significance and by their interests: " + interests + ". "
+                "Rewrite it as one plain-text line, max 110 characters, no "
+                "quotes, no markdown, understandable without context. "
+                "If nothing is significant or everything is minor/repetitive, "
+                "or the best story is essentially the same as the previous one, "
+                "reply with exactly NONE."
+            ),
+            messages=[{
+                "role": "user",
+                "content": ("Previously shown story: "
+                            + (last or "(none)")
+                            + "\n\nCurrent headlines:\n"
+                            + "\n".join(headlines)),
+            }],
+        )
+        text = ""
+        if response.stop_reason != "refusal":
+            text = next((b.text for b in response.content if b.type == "text"), "").strip()
+        if text.upper() == "NONE":
+            text = ""
+        else:
+            text = text[:160]
+        _news_cache["text"] = text
+        if text:
+            _news_cache["last_story"] = text
+        _news_cache["ts"] = time.time()
+        _news_cache["interests"] = interests
+        print("News refresh:", repr(text[:80]))
+        return text
+    except Exception as e:
+        print("News refresh error:", e)
+        return _news_cache["text"]
+    finally:
+        _news_cache["refreshing"] = False
+
+
+def get_news(interests=None):
+    """Current news line ('' = nothing worth showing). Never blocks: serves
+    the cached value and refreshes in the background when stale."""
+    if not ANTHROPIC_API_KEY:
+        return ""
+    interests = interests or NEWS_INTERESTS
+    now = time.time()
+    stale = (now - _news_cache["ts"] > NEWS_TTL
+             or _news_cache["interests"] != interests)
+    if stale and not _news_cache["refreshing"]:
+        _news_cache["refreshing"] = True
+        threading.Thread(target=_refresh_news, args=(interests,),
+                         daemon=True).start()
+    return _news_cache["text"]
+
+
+def _apply_news(resp, interests=None):
+    """Attach the news line to a display response; the NEWS screen only
+    enters the rotation while there's something to show."""
+    news = get_news(interests)
+    resp["news"] = news
+    modes = resp.get("allowed_modes")
+    if news and isinstance(modes, list) and "NEWS" not in modes:
+        modes.append("NEWS")
+    return resp
+
+
+# =====================================================================
 # Device polling endpoint
 # =====================================================================
 # --- Design preview mode ---------------------------------------------
@@ -764,19 +888,19 @@ def get_display(device_id: str, request: Request):
         resp = display_from_schedule_band(band, dev)
         resp.update({"paired": True, "reboot": reboot, "anim_version": 0,
                      "wanim_version": weather_anim_version()})
-        return resp
+        return _apply_news(resp, resp.pop("_news_interests", None))
 
     # Legacy fallback
     bright, allowed = legacy_schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
-    return {
+    return _apply_news({
         "paired": True, "brightness": bright, "allowed_modes": allowed,
         "anim_version": 0, "wanim_version": weather_anim_version(),
         "trains": get_trains(boards), "weather": get_weather(),
         "message": current_message(dev),
         "reboot": reboot, "epoch": int(time.time()),
         "tz_offset": uk_tz_offset_seconds(),
-    }
+    })
 
 
 @app.get("/api/user/device/{device_id}/display")
@@ -792,15 +916,15 @@ def get_display_for_user(device_id: str, authorization: str = Header(default="")
     if band:
         resp = display_from_schedule_band(band, dev)
         resp["paired"] = True
-        return resp
+        return _apply_news(resp, resp.pop("_news_interests", None))
 
     bright, allowed = legacy_schedule_for(dev)
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
-    return {
+    return _apply_news({
         "paired": True, "brightness": bright, "allowed_modes": allowed,
         "trains": get_trains(boards), "weather": get_weather(),
         "message": current_message(dev),
-    }
+    })
 
 
 # =====================================================================
