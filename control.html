@@ -93,6 +93,7 @@ button:disabled{opacity:.45;pointer-events:none}
 .type-clock{background:#26231a;color:#ffb020}
 .type-message{background:#26181a;color:#ff7070}
 .type-animation{background:#1e1826;color:#b06afc}
+.type-news{background:#261a1a;color:#ffb020}
 
 /* Catalogue list */
 .cat-item{background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
@@ -322,6 +323,7 @@ button:disabled{opacity:.45;pointer-events:none}
         <option value="clock">Clock</option>
         <option value="message">Message</option>
         <option value="animation">Animation</option>
+        <option value="news">News</option>
       </select>
     </div>
     <div id="screenFields"></div>
@@ -560,7 +562,7 @@ async function loadScreens(){
   screens=s; renderScreens();
 }
 
-const TYPE_LABEL={trains:"Trains",weather:"Weather",clock:"Clock",message:"Message",animation:"Animation"};
+const TYPE_LABEL={trains:"Trains",weather:"Weather",clock:"Clock",message:"Message",animation:"Animation",news:"News"};
 
 function renderScreens(){
   const g=$("screenGrid");
@@ -623,6 +625,10 @@ function renderScreenFields(cfg={}){
   }else if(type==="animation"){
     el.innerHTML=`<div class="field"><label class="field-label">Animation URL (.bin)</label>
       <input id="animUrl" type="url" placeholder="https://…" value="${esc(cfg.url||"")}"></div>`;
+  }else if(type==="news"){
+    el.innerHTML=`<div class="field"><label class="field-label">Interests — what news matters to you? (blank = server default)</label>
+      <textarea id="newsInterests" maxlength="300" placeholder="e.g. UK politics, science, F1, AI, south London">${esc(cfg.interests||"")}</textarea></div>
+      <div class="muted">Claude scans the headlines hourly and only shows a story when there's something significant matching these interests.</div>`;
   }
 }
 window.renderScreenFields=renderScreenFields;
@@ -680,6 +686,7 @@ function collectScreenConfig(){
   if(type==="clock") return {color:hexToCol($("clockCol").value),format:$("clockFmt").value};
   if(type==="message") return {text:$("msgText").value.trim()};
   if(type==="animation") return {url:$("animUrl").value.trim()};
+  if(type==="news") return {interests:$("newsInterests").value.trim()};
   return {};
 }
 

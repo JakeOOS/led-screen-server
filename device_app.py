@@ -132,7 +132,9 @@ FONT_BOLD_5X5 = {
     '6': [" ### ", "##   ", "#### ", "## ##", " ### "], '7': ["#####", "   ##", "  ## ", " ##  ", " ##  "],
     '8': [" ### ", "## ##", " ### ", "## ##", " ### "], '9': [" ### ", "## ##", " ####", "   ##", " ### "],
     ' ': ["     ", "     ", "     ", "     ", "     "], '-': ["     ", "     ", "#####", "     ", "     "],
-    '?': [" ### ", "   ##", "  ## ", "     ", "  ## "], '!': ["  ## ", "  ## ", "  ## ", "     ", "  ## "]
+    '?': [" ### ", "   ##", "  ## ", "     ", "  ## "], '!': ["  ## ", "  ## ", "  ## ", "     ", "  ## "],
+    '.': ["  ", "  ", "  ", "##", "##"], ',': ["  ", "  ", "  ", " ##", "## "],
+    ':': ["##", "##", "  ", "##", "##"], "'": ["##", "##", "  ", "  ", "  "]
 }
 
 FONT_TALL_5X11 = {
@@ -253,6 +255,7 @@ def fetch_display_state(current_state):
                 "tz_offset": data.get("tz_offset", 0),
                 "anim_version": data.get("anim_version", 0),
                 "wanim_version": data.get("wanim_version", 0),
+                "news": data.get("news", ""),
                 "paired": data.get("paired", True),
                 "pair_code": data.get("pair_code", ""),
             }
@@ -817,6 +820,36 @@ def draw_phone_screen(msg, ref_time):
                 screen.text(line, x, offset_y, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
             offset_y += 7
 
+def draw_news_screen(text, ref_time):
+    """Red NEWS header + the current story in the 4x6 font, scrolling
+    vertically when it doesn't fit the area below the header."""
+    screen.clear()
+    if text:
+        lines = wrap_text_to_lines(text, max_w=62)
+        area_top = 9
+        area_h = 32 - area_top
+        total_h = len(lines) * 7 - 1
+        if total_h <= area_h:
+            y = area_top + (area_h - total_h) // 2
+        else:
+            ms_per_pixel = 150
+            distance = total_h - area_h
+            scroll_time = distance * ms_per_pixel
+            cycle = scroll_time + 2000
+            t = ref_time % cycle
+            y = area_top - (t // ms_per_pixel if t < scroll_time else distance)
+        for line in lines:
+            if -7 <= y < 32:
+                screen.text(line, 1, y, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
+            y += 7
+    # Header drawn last so scrolled lines pass underneath it.
+    graphics.set_pen(screen.create_pen(COL_BLACK))
+    graphics.rectangle(0, 0, 64, 8)
+    screen.text("NEWS", 1, 1, COL_RED, font=FONT_3X5)
+    graphics.set_pen(screen.create_pen(COL_GREY))
+    graphics.line(0, 7, 64, 7)
+
+
 def draw_clock(local_struct):
     screen.clear()
     hh = "%02d" % local_struct[3]
@@ -1055,6 +1088,8 @@ def main():
                 continue
             if m == "ANIM" and not anim_available():
                 continue
+            if m == "NEWS" and not state.get("news"):
+                continue
             cycle.append(m)
         if not cycle:
             cycle = ["CLOCK"]
@@ -1075,6 +1110,7 @@ def main():
         if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
         elif mode == "WEATHER": draw_weather_split(state["weather"], now_ticks)
         elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
+        elif mode == "NEWS":    draw_news_screen(state.get("news", ""), now_ticks)
         elif mode == "ANIM":    draw_animation(now_ticks)
         elif mode == "CLOCK":   draw_clock(local_struct)
         else:                   screen.clear()
