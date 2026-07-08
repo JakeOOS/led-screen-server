@@ -2,3 +2,6 @@
 __pycache__/
 ._*
 .claude/
+
+# device bootloader — contains WiFi credentials, repo is public
+ota_bootloader.py
