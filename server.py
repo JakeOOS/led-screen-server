@@ -985,13 +985,27 @@ def search_stations(q: str = ""):
 # =====================================================================
 # Firmware + phone page
 # =====================================================================
+# In-memory OTA request log for debugging device update problems.
+# Resets on each deploy; check via the "ota_requests" field on GET /.
+_ota_log = {"version_checks": [], "app_downloads": []}
+
+
+def _ota_note(kind):
+    lst = _ota_log[kind]
+    lst.append(datetime.now(UK_TZ).strftime("%Y-%m-%d %H:%M:%S"))
+    if len(lst) > 10:
+        lst.pop(0)
+
+
 @app.get("/firmware/version")
 def firmware_version():
+    _ota_note("version_checks")
     return {"version": FIRMWARE_VERSION}
 
 
 @app.get("/firmware/app")
 def firmware_app():
+    _ota_note("app_downloads")
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         with open(os.path.join(here, "device_app.py")) as f:
@@ -1019,4 +1033,5 @@ def root():
         "owm_key_set": bool(OWM_API_KEY),
         "persistence": "supabase" if SB_REST else "in-memory",
         "device_secret_set": bool(DEVICE_SECRET),
+        "ota_requests": _ota_log,
     }
