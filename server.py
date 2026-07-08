@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-FIRMWARE_VERSION = "26"
+FIRMWARE_VERSION = "27"
 
 OWM_API_KEY   = os.environ.get("OWM_API_KEY", "")
 RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
@@ -752,7 +752,7 @@ def get_display(device_id: str, request: Request):
     if _preview["data"]:
         return {
             "paired": True, "brightness": 1.0, "allowed_modes": ["ANIM"],
-            "anim_version": _preview["version"],
+            "anim_version": _preview["version"], "wanim_version": weather_anim_version(),
             "trains": [], "weather": [], "message": current_message(dev),
             "reboot": reboot, "epoch": int(time.time()),
             "tz_offset": uk_tz_offset_seconds(),
@@ -761,7 +761,8 @@ def get_display(device_id: str, request: Request):
     band = get_active_schedule_band(device_id)
     if band:
         resp = display_from_schedule_band(band, dev)
-        resp.update({"paired": True, "reboot": reboot, "anim_version": 0})
+        resp.update({"paired": True, "reboot": reboot, "anim_version": 0,
+                     "wanim_version": weather_anim_version()})
         return resp
 
     # Legacy fallback
@@ -769,7 +770,7 @@ def get_display(device_id: str, request: Request):
     boards = (dev.get("config") or {}).get("boards") or DEFAULT_BOARDS
     return {
         "paired": True, "brightness": bright, "allowed_modes": allowed,
-        "anim_version": 0,
+        "anim_version": 0, "wanim_version": weather_anim_version(),
         "trains": get_trains(boards), "weather": get_weather(),
         "message": current_message(dev),
         "reboot": reboot, "epoch": int(time.time()),
@@ -1059,6 +1060,58 @@ def search_stations(q: str = ""):
     prefix = [s for s in matches if s["n"].lower().startswith(q)]
     rest   = [s for s in matches if not s["n"].lower().startswith(q)]
     return (prefix + rest)[:10]
+
+
+# =====================================================================
+# Split weather-screen animations
+# =====================================================================
+# Static .bin files built by tools/build_weather_anims.py and committed
+# to weather_anims/. The device fetches <cond>_<L|R>.bin for today's and
+# tomorrow's conditions and refetches everything when the version stamp
+# (derived from the files themselves) changes.
+WEATHER_ANIM_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "weather_anims")
+WEATHER_COND_FALLBACK = {"snow": "rain"}   # until Snow_L/R exports exist
+_WANIM_NAME_RE = None
+
+_wanim_ver_cache = {"ts": 0.0, "v": 0}
+
+
+def weather_anim_version():
+    """Stable stamp of the weather_anims folder contents (0 = none)."""
+    import zlib
+    now = time.time()
+    if now - _wanim_ver_cache["ts"] < 60:
+        return _wanim_ver_cache["v"]
+    v = 0
+    try:
+        for name in sorted(os.listdir(WEATHER_ANIM_DIR)):
+            if not name.endswith(".bin"):
+                continue
+            st = os.stat(os.path.join(WEATHER_ANIM_DIR, name))
+            v = zlib.crc32(f"{name}:{st.st_size}:{int(st.st_mtime)}".encode(), v)
+    except OSError:
+        v = 0
+    v = v & 0x7FFFFFFF
+    _wanim_ver_cache.update(ts=now, v=v)
+    return v
+
+
+@app.get("/firmware/weather/{fname}")
+def get_weather_anim(fname: str):
+    import re as _re
+    m = _re.fullmatch(r"(sunny|cloudy|rain|stormy|snow)_(L|R)\.bin", fname)
+    if not m:
+        raise HTTPException(404, "Unknown weather animation")
+    cond, side = m.group(1), m.group(2)
+    path = os.path.join(WEATHER_ANIM_DIR, f"{cond}_{side}.bin")
+    if not os.path.exists(path):
+        fb = WEATHER_COND_FALLBACK.get(cond)
+        if fb:
+            path = os.path.join(WEATHER_ANIM_DIR, f"{fb}_{side}.bin")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Animation not built yet")
+    with open(path, "rb") as f:
+        return Response(content=f.read(), media_type="application/octet-stream")
 
 
 # =====================================================================
