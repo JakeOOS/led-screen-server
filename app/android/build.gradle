@@ -1,0 +1,44 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.2'
+        classpath 'com.google.gms:google-services:4.4.2'
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// The repo lives on an exFAT volume, where macOS writes an AppleDouble "._x"
+// sidecar next to any file carrying extended attributes. Gradle generates
+// those files *during* the build, and both the Android resource parser and
+// d8 then trip over them ("._layout is not a directory", "Unexpected class
+// file name: ._AppPlugin$1.class"). Cleaning before the build does not help,
+// because the sidecars reappear as the build writes.
+//
+// So keep every build directory on the internal APFS disk, which has no
+// AppleDouble behaviour. Only generated output moves — the sources stay put.
+def externalBuildRoot = new File(
+    System.getProperty("user.home"), ".gradle-build-dirs/voxel-android")
+allprojects {
+    layout.buildDirectory = new File(externalBuildRoot, project.path.replace(':', '/'))
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

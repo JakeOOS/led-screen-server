@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOXEL — Privacy Policy</title>
+<style>
+  :root{ --bg:#f6f2f0; --ink:#2b1a12; --dim:#7a6459; --rule:rgba(120,80,60,.18); }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#1a100c; --ink:#f0e6e0; --dim:#a8938a; --rule:rgba(255,220,200,.16); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:40px 20px 80px;background:var(--bg);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:680px;margin:0 auto}
+  h1{font-size:28px;margin:0 0 4px}
+  h2{font-size:18px;margin:36px 0 8px;padding-top:18px;border-top:1px solid var(--rule)}
+  .updated{color:var(--dim);font-size:14px;margin-bottom:8px}
+  ul{padding-left:22px} li{margin:6px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:15px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-weight:600}
+  code{background:rgba(128,90,70,.12);padding:1px 5px;border-radius:4px;font-size:14px}
+  a{color:inherit}
+</style>
+</head>
+<body>
+<main>
+
+<h1>VOXEL — Privacy Policy</h1>
+<p class="updated">Last updated 9 August 2026</p>
+
+<p>VOXEL is an app for controlling a personal LED matrix screen. This policy
+explains what it stores, why, and how to get rid of it. It covers the Android
+app and the backend it talks to.</p>
+
+<p>The app shows no adverts, contains no third-party analytics or tracking SDKs,
+and none of your data is sold or shared for advertising.</p>
+
+<h2>What is collected</h2>
+
+<table>
+  <tr><th>Data</th><th>Why</th></tr>
+  <tr>
+    <td><strong>Email address and password</strong></td>
+    <td>To create and sign in to your account. Authentication is handled by
+    Supabase; your password is stored only as a salted hash, and we never
+    receive or store it in readable form.</td>
+  </tr>
+  <tr>
+    <td><strong>Screen configuration</strong></td>
+    <td>The screens, catalogues and schedule you build — including any message
+    text you choose to display, your selected weather location, train station,
+    and news interests. This is the content of the product; without it the
+    screen has nothing to show.</td>
+  </tr>
+  <tr>
+    <td><strong>Device pairing information</strong></td>
+    <td>An identifier for each screen you own, the name you give it, and the
+    time it last contacted the server, so the app can show whether it is
+    online.</td>
+  </tr>
+</table>
+
+<p>No location is collected from your phone. The weather location is a place
+you type in, not a device GPS reading. The app requests no runtime permissions
+beyond internet access, and does not access your contacts, camera, microphone,
+photos, or files.</p>
+
+<h2>Who it is shared with</h2>
+
+<p>Data is passed to these providers only to make the product work:</p>
+
+<table>
+  <tr><th>Provider</th><th>What reaches them</th></tr>
+  <tr><td>Supabase</td><td>Your email address, password hash, and screen
+    configuration. Acts as the authentication and database provider.</td></tr>
+  <tr><td>Render</td><td>Hosts the backend; processes requests in transit.</td></tr>
+  <tr><td>OpenWeather</td><td>The weather location you configured. No account
+    identifier is sent.</td></tr>
+  <tr><td>Rail Data Marketplace</td><td>The station you configured. No account
+    identifier is sent.</td></tr>
+  <tr><td>Anthropic</td><td>If you enable the news screen, your news interests
+    text and public RSS headlines are sent to the Claude API to pick and
+    summarise a story. No account identifier is sent, and the data is not used
+    to train models.</td></tr>
+</table>
+
+<p>Beyond these, data is disclosed only where the law requires it.</p>
+
+<h2>Security</h2>
+
+<ul>
+  <li>All traffic between the app, the backend, and the providers above uses
+    HTTPS.</li>
+  <li>Every user-facing endpoint requires a valid authentication token, and the
+    server checks that a screen belongs to you before returning or changing
+    anything about it.</li>
+  <li>The app disables Android cloud backup, so your signed-in session cannot be
+    copied to another device through a device backup or transfer.</li>
+</ul>
+
+<h2>Retention and deletion</h2>
+
+<p>Your data is kept for as long as your account exists.</p>
+
+<p>You can delete your account at any time from inside the app:
+<strong>Account → Delete account</strong>. This permanently removes your login
+and your saved configuration, and unpairs any screens on your account so they
+can be set up again by someone else. It cannot be undone.</p>
+
+<p>If you cannot access the app, email
+<a href="mailto:jack@residentarchitects.com">jack@residentarchitects.com</a>
+from the address on the account and ask for deletion. Requests are actioned
+within 30 days.</p>
+
+<h2>Children</h2>
+
+<p>VOXEL is not directed at children under 13, and accounts are not knowingly
+created for them.</p>
+
+<h2>Changes</h2>
+
+<p>If this policy changes materially, the date at the top will change and the
+updated version will appear at this address.</p>
+
+<h2>Contact</h2>
+
+<p>Resident Architects —
+<a href="mailto:jack@residentarchitects.com">jack@residentarchitects.com</a></p>
+
+</main>
+</body>
+</html>

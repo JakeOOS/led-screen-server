@@ -1,0 +1,26 @@
+{
+  "name": "voxel-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Android wrapper for the VOXEL LED screen control panel.",
+  "scripts": {
+    "build:www": "node build-www.mjs",
+    "clean:appledouble": "xattr -cr . 2>/dev/null; find . -name '._*' -delete 2>/dev/null; true",
+    "sync": "npm run build:www && cap sync android && npm run clean:appledouble",
+    "assets": "capacitor-assets generate --android && npm run clean:appledouble",
+    "open": "cap open android",
+    "bundle": "npm run sync && cd android && ./gradlew bundleRelease",
+    "apk": "npm run sync && cd android && ./gradlew assembleRelease",
+    "debug": "npm run sync && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

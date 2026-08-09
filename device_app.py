@@ -18,13 +18,21 @@ import machine
 import gc
 import os
 
-DEVICE_SECRET = "***REMOVED-DEVICE-SECRET***"    # must match DEVICE_SECRET in Render
-
 # --- CONFIG ---
-WIFI_SSID = "***REMOVED-WIFI-SSID***"
-WIFI_PASSWORD = "***REMOVED-WIFI-PASSWORD***"
-SERVER_URL = "https://led-screen-server.onrender.com"
-DEVICE_ID = "screen-01"
+# Secrets live in device_config.py, which is gitignored and flashed to the
+# device separately — this file is public and is also served over OTA, so
+# nothing sensitive can sit in it. Copy device_config.example.py, fill it in,
+# and put it on the device alongside app.py.
+try:
+    from device_config import (
+        DEVICE_SECRET, WIFI_SSID, WIFI_PASSWORD, SERVER_URL, DEVICE_ID)
+except ImportError:
+    # No config on the device yet. Fail loud rather than silently running with
+    # blank credentials and looping on a connection that can never succeed.
+    raise RuntimeError(
+        "device_config.py missing — copy device_config.example.py, fill in the "
+        "WiFi and device credentials, and flash it alongside app.py")
+
 POLL_INTERVAL = 20           # seconds between server data polls
 SCREEN_SECONDS = 12          # seconds each screen shows before the loop advances
 

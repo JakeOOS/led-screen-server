@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 31+ counterpart to allowBackup="false": exclude everything from both
+     cloud backup and device-to-device transfer, so a Supabase session stored in
+     the WebView's localStorage never leaves the device it was created on. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>

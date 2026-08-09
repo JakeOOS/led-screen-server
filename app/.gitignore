@@ -1,0 +1,17 @@
+node_modules/
+
+# Generated from ../control.html by build-www.mjs
+www/index.html
+
+# Capacitor regenerates these from capacitor.config.json + resources/
+android/app/src/main/assets/public/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+
+# Signing material — never commit. See RELEASE.md.
+*.keystore
+*.jks
+keystore.properties

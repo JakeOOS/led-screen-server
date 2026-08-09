@@ -30,7 +30,8 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import PlainTextResponse, HTMLResponse, Response
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -42,6 +43,32 @@ RDM_API_KEY   = os.environ.get("RDM_API_KEY", "")
 SUPABASE_URL  = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "")
 DEVICE_SECRET = os.environ.get("DEVICE_SECRET", "")
+
+# ── Android app ──────────────────────────────────────────────────────
+# The packaged app loads control.html from inside the APK, so its page origin
+# is https://localhost, not this host — every /api call it makes is
+# cross-origin and needs CORS. The browser served /app stays same-origin and is
+# unaffected. Origins are listed explicitly rather than "*" because these
+# endpoints carry an Authorization header.
+ANDROID_APP_ID   = os.environ.get("ANDROID_APP_ID", "com.residentarchitects.voxel")
+# SHA-256 fingerprint of the signing cert, colon-separated uppercase hex. Take
+# it from Play Console -> Test and release -> App integrity -> App signing key
+# once Google has re-signed the bundle. Until it is set, App Links stay
+# unverified and reset emails simply open in the browser instead of the app —
+# the flow still completes, it just does not hand off.
+ANDROID_CERT_SHA256 = os.environ.get("ANDROID_CERT_SHA256", "")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://localhost",   # Capacitor on Android
+        "capacitor://localhost",
+        "http://localhost",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 OWM_LAT = "51.5074"
 OWM_LON = "-0.1278"
@@ -941,6 +968,49 @@ def get_me(authorization: str = Header(default="")):
     }
 
 
+@app.delete("/api/user/me")
+def delete_account(authorization: str = Header(default="")):
+    """Delete the signed-in user and everything attached to them.
+
+    Google Play requires an in-app deletion path for any app with accounts, and
+    requires that it actually removes the account rather than just deactivating
+    it. Order matters: unpair devices first, so that if the auth delete fails
+    we have not orphaned rows pointing at a user id that no longer exists.
+
+    Devices themselves are physical hardware and are not deleted — they are
+    reset to unpaired with a fresh pair code, so the screen can be handed on or
+    re-paired to a new account.
+    """
+    user = verify_token(authorization)
+    uid = user["id"]
+
+    for dev in get_user_devices(uid):
+        save_device(dev["device_id"], {
+            "paired": False,
+            "owner_id": None,
+            "name": "",
+            "message": "",
+            "pair_code": _gen_code(),
+            "config": {"boards": DEFAULT_BOARDS, "schedule": DEFAULT_SCHEDULE},
+        })
+
+    if not SB_AUTH:
+        return {"ok": True, "note": "no auth backend configured"}
+
+    # Deleting the auth user needs the service_role key — the user's own JWT
+    # cannot remove itself via the admin API.
+    try:
+        r = requests.delete(SB_AUTH + "/admin/users/" + uid,
+                            headers=SB_HEADERS_ADMIN, timeout=10)
+    except Exception as e:
+        print("Account delete error:", e)
+        raise HTTPException(status_code=502, detail="Could not reach auth service")
+    if r.status_code not in (200, 204):
+        print("Account delete failed:", r.status_code, r.text[:200])
+        raise HTTPException(status_code=502, detail="Could not delete account")
+    return {"ok": True}
+
+
 class PairBody(BaseModel):
     code: str
     name: Optional[str] = None
@@ -1261,7 +1331,16 @@ def firmware_version():
 
 
 @app.get("/firmware/app")
-def firmware_app():
+def firmware_app(x_device_secret: Optional[str] = Header(None)):
+    """Firmware source for the OTA bootloader.
+
+    Behind the device secret: this endpoint used to be public, which handed the
+    firmware source to anyone who asked. It no longer carries credentials (those
+    moved to device_config.py on the device), but there is no reason to serve
+    it openly either.
+    """
+    if not DEVICE_SECRET or x_device_secret != DEVICE_SECRET:
+        raise HTTPException(status_code=401, detail="bad device secret")
     _ota_note("app_downloads")
     here = os.path.dirname(os.path.abspath(__file__))
     try:
@@ -1281,6 +1360,49 @@ def control_panel():
         return HTMLResponse("<h1>control.html not found</h1>", status_code=404)
 
 
+def _serve_static_html(name):
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        with open(os.path.join(here, name)) as f:
+            return HTMLResponse(f.read())
+    except OSError:
+        return HTMLResponse(f"<h1>{name} not found</h1>", status_code=404)
+
+
+@app.get("/privacy")
+def privacy_policy():
+    """Public privacy policy. Play requires this URL both in the store listing
+    and in the Data safety form, and it has to be reachable without signing in."""
+    return _serve_static_html("privacy.html")
+
+
+@app.get("/delete-account")
+def delete_account_info():
+    """Public account-deletion page. Play requires a deletion route that someone
+    can reach from the web without installing the app, alongside the in-app
+    button — this explains both."""
+    return _serve_static_html("delete-account.html")
+
+
+@app.get("/.well-known/assetlinks.json")
+def asset_links():
+    """Digital Asset Links — proves this domain and the Android app are the same
+    project, which is what lets the app claim https://<host>/app links and open
+    password-reset emails directly instead of bouncing through a browser."""
+    if not ANDROID_CERT_SHA256:
+        return JSONResponse([], status_code=200)
+    return JSONResponse([{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": ANDROID_APP_ID,
+            "sha256_cert_fingerprints": [
+                f.strip() for f in ANDROID_CERT_SHA256.split(",") if f.strip()
+            ],
+        },
+    }])
+
+
 @app.get("/")
 def root():
     return {
@@ -1290,5 +1412,6 @@ def root():
         "owm_key_set": bool(OWM_API_KEY),
         "persistence": "supabase" if SB_REST else "in-memory",
         "device_secret_set": bool(DEVICE_SECRET),
+        "app_links_configured": bool(ANDROID_CERT_SHA256),
         "ota_requests": _ota_log,
     }
