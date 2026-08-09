@@ -23,26 +23,44 @@ resources/*.png ──capacitor-assets──> android/…/res/mipmap-*, drawable
 Done: Capacitor project, Android platform, launcher icons and splash (light and
 dark) generated from `resources/`, App Links intent filter, backup disabled so
 Supabase tokens cannot leave the device, release signing config wired to
-`keystore.properties`, Play listing icon and feature graphic in `play/`.
+`keystore.properties`, Play listing icon and feature graphic in `play/`,
+toolchain installed, `/privacy` and `/delete-account` pages plus in-app account
+deletion. A debug APK builds clean.
 
-Not done: the toolchain, the signing key, and the Play Console policy items —
-below.
+Not done: the signing key, store screenshots, and the Play Console forms.
+
+## exFAT: why build output lives outside the repo
+
+This volume is exFAT, where macOS writes an AppleDouble `._x` sidecar beside any
+file carrying extended attributes. Gradle creates those files *during* a build,
+and both the Android resource parser and d8 then fail on them:
+
+```
+'…/packaged_res/debug/…/._layout' is not a directory
+Unexpected class file name: com/capacitorjs/plugins/app/._AppPlugin$1.class
+```
+
+Cleaning first does not help — they reappear as the build writes. So
+`android/build.gradle` redirects every module's build directory to
+`~/.gradle-build-dirs/voxel-android`, on the internal APFS disk. Sources stay in
+the repo; only generated output moves. Build artefacts are therefore **not**
+under `android/app/build/` — see the paths below.
+
+`git` needs the same treatment: `core.filemode` is set to `false` in this repo,
+because exFAT reports every file as executable and otherwise the whole tree
+shows as modified.
 
 ## 1. Toolchain
 
-Neither a JDK nor the Android SDK is installed on this machine. Either install
-Android Studio (bundles both, and is the easier route if you want to eyeball the
-app in an emulator first), or command-line only:
+Already installed: OpenJDK 21 (`/opt/homebrew/opt/openjdk@21`) and the Android
+command-line tools (`/opt/homebrew/share/android-commandlinetools`), with
+licences accepted and `android/local.properties` written.
+
+Gradle needs `JAVA_HOME` pointed at the JDK, since the system has no default
+Java. Either prefix commands with it, or put this in your shell profile:
 
 ```bash
-brew install openjdk@21 && brew install --cask android-commandlinetools
-```
-
-Then point Gradle at the SDK and accept the licences:
-
-```bash
-echo "sdk.dir=/opt/homebrew/share/android-commandlinetools" > android/local.properties
-sdkmanager --licenses
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 ```
 
 ## 2. Signing key
@@ -73,9 +91,15 @@ keyPassword=<the key password you chose>
 npm run bundle
 ```
 
-Output: `android/app/build/outputs/bundle/release/app-release.aab` — that is the
-file you upload to Play Console. `npm run apk` gives you a signed APK instead if
-you want to sideload and test on a handset first.
+Output (note: outside the repo, per the exFAT section above):
+
+```
+~/.gradle-build-dirs/voxel-android/app/outputs/bundle/release/app-release.aab
+```
+
+That is the file you upload to Play Console. `npm run apk` gives you a signed
+APK instead if you want to sideload and test on a handset first, and
+`npm run debug` builds an unsigned debug APK.
 
 `npm run bundle` re-runs `build:www` and `cap sync` first, so it always packages
 the current `control.html`.
@@ -84,19 +108,26 @@ the current `control.html`.
 
 Assets are ready in `play/`: `icon-512.png` and `feature-graphic-1024x500.png`.
 You still need at least two phone screenshots — take them from a device or
-emulator running the release build.
+emulator running the build.
 
-Three policy items are **not** satisfied yet and will each block review, because
-the app has accounts:
+The policy work is done and deployed with the backend:
 
-- **Privacy policy URL.** Required in the listing and in the Data safety form.
-  Nothing is written or hosted yet.
-- **Data safety declaration.** The app collects email addresses (Supabase Auth)
-  and stores schedule/screen configuration. Declare that honestly, including
-  that data is transmitted off-device and encrypted in transit.
-- **Account deletion.** Play requires both an in-app path and a publicly
-  reachable web URL to request deletion. Neither exists — `server.py` has no
-  delete-account route and `control.html` has no button.
+- **Privacy policy** — `/privacy`, served from `privacy.html`.
+- **Account deletion** — `DELETE /api/user/me`, reachable in-app from
+  **Account → Delete account** (typed `DELETE` confirmation), plus the public
+  `/delete-account` page Play requires as a web route. Deleting removes the
+  Supabase auth user and unpairs their screens, resetting each to a fresh pair
+  code so the hardware can be set up again.
+- **Data safety form** — answers written out in
+  [PLAY-DATA-SAFETY.md](PLAY-DATA-SAFETY.md), checked against what the code
+  actually sends.
+
+One thing that is easy to forget and does cause rejections: under **App
+access**, reviewers need working credentials, or they cannot get past the
+sign-in screen. Create a throwaway account and give it to them.
+
+These pages are served by the backend, so **the backend has to be redeployed**
+before you submit — the URLs must resolve when the reviewer opens them.
 
 ## 5. After the first upload
 
