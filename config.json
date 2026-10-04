@@ -1,5 +1,5 @@
 {
-  "firmware": "33",
+  "firmware": "34",
 
   "screen_seconds": 12,
 
@@ -7,9 +7,9 @@
     {"from": 5,  "brightness": 1.0, "screens": ["WEATHER", "NEWS"]},
     {"from": 6,  "brightness": 1.0, "screens": ["TRAINS", "WEATHER", "NEWS", "CLOCK"]},
     {"from": 11, "brightness": 1.0, "screens": ["WEATHER", "NEWS", "CLOCK"]},
-    {"from": 12, "brightness": 0.5, "screens": ["WEATHER", "NEWS", "ANIM", "CLOCK"]},
-    {"from": 18, "brightness": 0.5, "screens": ["WEATHER", "NEWS", "ANIM"]},
-    {"from": 19, "brightness": 0.2, "screens": ["ANIM", "NEWS"]}
+    {"from": 12, "brightness": 0.5, "screens": ["WEATHER", "NEWS", "CLOCK"]},
+    {"from": 18, "brightness": 0.5, "screens": ["WEATHER", "NEWS"]},
+    {"from": 19, "brightness": 0.2, "screens": ["NEWS"]}
   ],
 
   "boards": [

@@ -24,7 +24,7 @@ import json
 
 # Must match "firmware" in config.json -- the bootloader refuses to install
 # a download whose marker doesn't match the version it was told to fetch.
-FW_VERSION = "33"
+FW_VERSION = "34"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
@@ -44,6 +44,7 @@ REPO_RAW = "https://raw.githubusercontent.com/JakeOOS/led-screen-server"
 CONFIG_URL = REPO_RAW + "/main/config.json"
 WANIM_URL = REPO_RAW + "/main/weather_anims/"
 NEWS_URL = REPO_RAW + "/data/news.json"      # written by tools/news.py
+NEWS_INTRO_URL = REPO_RAW + "/main/anims/news_intro.bin"
 RDM_URL = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 OWM_URL = "https://api.openweathermap.org/data/2.5/forecast?units=metric&cnt=16"
 
@@ -779,6 +780,8 @@ WEATHER_ANIM_CONDS = {"clear": "sunny", "clouds": "cloudy", "rain": "rain",
 WANIM = {
     "L": {"path": "wthr_L.bin", "x": 0, "cond": "", "loaded": False,
           "pens": None, "cur": -1},
+    # One-shot sting played before a news story the first time it shows.
+    "N": {"path": "intro.bin", "x": 0, "loaded": False, "pens": None, "cur": -1},
 }
 WSTATE = {"drawn": False, "last_try": -9999}
 
@@ -858,6 +861,24 @@ def _wanim_draw(slot, ref_ticks):
             set_pen(pens[data[idx]])
             pixel(x0 + x, y)
             idx += 1
+    return True
+
+
+def play_intro():
+    """Play the news intro clip once, start to finish, at 10 frames a second.
+    Its last frame is the news screen's own header, so the story follows on
+    without a jump. Returns False if the clip isn't on flash yet."""
+    sl = WANIM["N"]
+    if not _wanim_load("N"):
+        return False
+    sl["cur"] = -1
+    for fi in range(sl["nframes"]):
+        start = time.ticks_ms()
+        _wanim_draw("N", fi * 100)
+        i75.update()
+        spare = 100 - time.ticks_diff(time.ticks_ms(), start)
+        if spare > 0:
+            time.sleep(spare / 1000)
     return True
 
 
@@ -1226,6 +1247,8 @@ def main():
     last_wifi_try = -9999
     last_brightness = -1
     last_mode = ""
+    intro_for = ""        # the story the news intro last played for
+    intro_try = -9999
     last_slot = -1
     last_min = -1
     last_rev = -1
@@ -1308,6 +1331,18 @@ def main():
                     else:
                         print("Weather anim fetch", want, res)
 
+            # News intro clip: fetch it once, and again if its URL changes.
+            intro_url = CFG.get("news_intro_url", NEWS_INTRO_URL)
+            if ("NEWS" in screens and intro_url != _read("intro_meta.txt")
+                    and now - intro_try > 300):
+                intro_try = now
+                if fetch_animation(intro_url, dest=WANIM["N"]["path"]) == "OK":
+                    try:
+                        with open("intro_meta.txt", "w") as f:
+                            f.write(intro_url)
+                    except OSError:
+                        pass
+
         # Apply brightness from the schedule when it changes.
         brightness = band.get("brightness", 0.5)
         if brightness != last_brightness:
@@ -1316,6 +1351,7 @@ def main():
             screen.reset_pens()
             ANIM["pens"] = None          # rebuild palette pens at new brightness
             WANIM["L"]["pens"] = None
+            WANIM["N"]["pens"] = None
             WANIM["L"]["cur"] = -1
             WSTATE["drawn"] = False
             current_anim_frame = -1
@@ -1348,6 +1384,12 @@ def main():
         if mode == "WEATHER" and last_mode != "WEATHER":
             WSTATE["drawn"] = False
             WANIM["L"]["cur"] = -1
+        # A story gets the intro the first time it comes up, not on every pass.
+        if mode == "NEWS" and last_mode != "NEWS" and DATA["news"] != intro_for:
+            intro_for = DATA["news"]
+            if play_intro():
+                print("News intro played")
+                now_ticks = time.ticks_ms()
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(trains, now_ticks)
