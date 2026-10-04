@@ -24,7 +24,7 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 
 - Jack's call: not releasing to anyone else, so drop the server, accounts, pairing and the Android app. Keep trains, weather, the laptop-made animation and Claude news. Live design preview and the phone message screen are dropped.
 - `device_app.py` (fw 33) now fetches trains (RDM) and weather (OWM) itself, streaming the JSON one array element at a time to stay inside RAM. Clock is NTP + on-device UK DST. Schedule, boards, brightness and `anim_url` come from `config.json` in the repo (cached on flash).
-- News: `.github/workflows/news.yml` runs `tools/news.py` hourly and force-pushes `news.json` to the `data` branch. Needs repo secret `ANTHROPIC_API_KEY`.
+- News: a scheduled Claude cloud routine ("VOXEL screen news", trig_01F9CcJh7HGfW9L3jwV4guAu, hourly 05-22 UTC, no connectors attached) runs `tools/news.py brief`, judges against a high bar (most hours NONE), then `tools/news.py publish`, which force-pushes `news.json` to the `data` branch. Stories expire after `news_hours` (config.json). No Anthropic API key or GitHub Action involved. Manage at https://claude.ai/code/routines
 - OTA: `ota_bootloader.py` reads `"firmware"` from `config.json` and pulls `device_app.py` from raw GitHub. To ship: bump `FW_VERSION` in device_app.py and `"firmware"` in config.json together. Bad versions are rolled back and remembered in `bad_version.txt`. Bootloader now imports `app` rather than exec-ing its source (saves ~50KB RAM).
 - `device_config.py` on the device now needs: WIFI_SSID, WIFI_PASSWORD, OWM_API_KEY, RDM_API_KEY.
 - Flashed to the screen over USB the same day (old files backed up in `backups/device_2026-10-04/`). Board is an **Interstate 75 W RP2350**, MicroPython 1.25 preview, ~440KB free RAM, so memory is not a concern. Boot, wifi, NTP, HTTPS and the animation download all work on hardware. Trains/weather return 401 until the API keys are added to `device_config.py`; the streaming parser is still unproven against real API data.
@@ -32,4 +32,6 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 - `config.json` schedule was seeded from the old DEFAULT_SCHEDULE, not from the live Supabase schedule.
 - Old server files (`server.py`, `control.html`, `app/`, privacy pages, `tools/preview_watcher.py`) are untouched; remove once the screen is confirmed working, then retire Render + Supabase.
 
-**Left off:** awaiting Jack: OWM + RDM keys into `device_config.py` (local, then copy to device), OK to delete `/lib/pygame` from the device, push to main, add the Actions secret.
+- API keys added to `device_config.py` (local, gitignored) and the device; trains and weather confirmed on real data. `/lib/pygame` removed from the device (1.7MB flash free). Standalone work merged to main and pushed. Uncommitted server/app work parked on local branch `archive/server-app-wip`; full zip + git bundle in `backups/`.
+
+**Left off:** Jack to sanity-check the schedule in `config.json`. Then: delete old server/app files from main, retire Render + Supabase.
