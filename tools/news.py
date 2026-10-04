@@ -27,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 NEWS_FEEDS = [
     "https://feeds.bbci.co.uk/news/rss.xml",
     "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
 ]
 DEFAULT_INTERESTS = "major UK and world events, science, technology, London"
 DEFAULT_HOURS = 6
@@ -44,6 +45,13 @@ results, celebrity and human-interest pieces. On most hours nothing
 qualifies, and the right answer is NONE. Also answer NONE if the best story is
 essentially the one previously shown, unless there has been a major new
 development in it.
+
+The bar is lower for LGBT news and for gay icons and major pop celebrities.
+For these, show the story when something major has happened: a death, a
+serious illness or accident, a coming out, a marriage or split, a retirement
+or comeback, a landmark win, or a significant change to LGBT rights. This is
+about events, not coverage: interviews, profiles, reviews, new releases, tour
+dates, gossip and things they merely said still do not qualify.
 
 When a story does qualify, rewrite it as one plain-text line, max 110
 characters, no quotes, no markdown, understandable without context."""
