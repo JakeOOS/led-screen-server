@@ -3,9 +3,10 @@ functions, unmodified, and shows the 64x32 output in a window.
 
 Usage:
     python3 sim/simulate.py                 # sample data
-    python3 sim/simulate.py --live          # poll the real server for live data
+    python3 sim/simulate.py --live          # fetch live data, as the device does
+                                            # (needs OWM_API_KEY / RDM_API_KEY set)
 
-Keys: 1 trains  2 weather  3 message  4 clock  5 anim   r  force-reload device_app.py
+Keys: 1 trains  2 weather  3 news  4 clock  5 anim   r  force-reload device_app.py
 Saving device_app.py auto-reloads it, so edits show up within a second.
 """
 
@@ -30,7 +31,7 @@ CELL = PIXEL + GAP
 MARGIN = 4
 GRID_W, GRID_H = 64, 32
 
-MODE_KEYS = {"1": "TRAINS", "2": "WEATHER", "3": "PHONE", "4": "CLOCK", "5": "ANIM"}
+MODE_KEYS = {"1": "TRAINS", "2": "WEATHER", "3": "NEWS", "4": "CLOCK", "5": "ANIM"}
 
 SAMPLE_TRAINS = [
     {"badge": "LBG", "badge_col": (0, 150, 255),
@@ -46,7 +47,7 @@ SAMPLE_WEATHER = [
     {"day": "TUE", "icon_name": "rain", "low": 10, "high": 16},
     {"day": "WED", "icon_name": "clouds", "low": 9, "high": 15},
 ]
-SAMPLE_MESSAGE = "HAPPY BIRTHDAY"
+SAMPLE_NEWS = "Sample headline chosen for the screen by Claude"
 
 
 def rgb_hex(rgb):
@@ -58,7 +59,6 @@ class Simulator:
         self.root = root
         self.live = live
         self.mode = "WEATHER"
-        self.server_state = None
         self.last_poll = 0.0
         self.device_path = device_app.__file__
         self.last_mtime = os.path.getmtime(self.device_path)
@@ -103,24 +103,25 @@ class Simulator:
             self.last_mtime = mtime
             self.reload_device_app()
 
-    def maybe_poll_server(self):
-        if self.live and (time.time() - self.last_poll > 15):
-            self.server_state = device_app.fetch_display_state(self.server_state)
+    def maybe_fetch_live(self):
+        if self.live and (time.time() - self.last_poll > 60):
+            device_app.fetch_config()
+            for name, _ in device_app.wanted_jobs(["TRAINS", "WEATHER", "NEWS"]):
+                device_app.run_job(name)
             self.last_poll = time.time()
 
     def draw_current_mode(self, now_ticks):
-        state = self.server_state
+        data = device_app.DATA
         if self.mode == "TRAINS":
-            data = state["trains"] if (state and state.get("trains")) else SAMPLE_TRAINS
-            device_app.draw_train_dashboard(data, now_ticks)
+            tm = device_app.uk_now()
+            rows = device_app.build_trains(tm[3] * 60 + tm[4]) if data["stations"] else SAMPLE_TRAINS
+            device_app.draw_train_dashboard(rows, now_ticks)
         elif self.mode == "WEATHER":
-            data = state["weather"] if (state and state.get("weather")) else SAMPLE_WEATHER
-            device_app.draw_weather_split(data, now_ticks)
-        elif self.mode == "PHONE":
-            msg = state["message"] if (state and state.get("message")) else SAMPLE_MESSAGE
-            device_app.draw_phone_screen(msg, now_ticks)
+            device_app.draw_weather_split(data["weather"] or SAMPLE_WEATHER, now_ticks)
+        elif self.mode == "NEWS":
+            device_app.draw_news_screen(data["news"] or SAMPLE_NEWS, now_ticks)
         elif self.mode == "CLOCK":
-            device_app.draw_clock(time.localtime())
+            device_app.draw_clock(device_app.uk_now())
         elif self.mode == "ANIM":
             device_app.draw_animation(now_ticks)
 
@@ -138,7 +139,7 @@ class Simulator:
 
     def tick(self):
         self.maybe_autoreload()
-        self.maybe_poll_server()
+        self.maybe_fetch_live()
         self.draw_current_mode(int(time.time() * 1000))
         device_app.i75.update()
         self.render()
@@ -147,7 +148,7 @@ class Simulator:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--live", action="store_true", help="poll the real server for live data")
+    parser.add_argument("--live", action="store_true", help="fetch live data from the APIs")
     args = parser.parse_args()
 
     root = tk.Tk()

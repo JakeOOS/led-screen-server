@@ -3,12 +3,9 @@ __pycache__/
 ._*
 .claude/
 
-# Device credentials — WiFi password and DEVICE_SECRET. The repo is public and
-# device_app.py is served over OTA, so these live here and nowhere else.
+# Device credentials — WiFi password and API keys. The repo is public and
+# device_app.py is fetched from it over OTA, so these live here and nowhere else.
 device_config.py
-
-# device bootloader — contains WiFi credentials, repo is public
-ota_bootloader.py
 
 # local backups — may contain device credentials
 backups/

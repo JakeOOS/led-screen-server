@@ -1,11 +1,14 @@
 # =====================================================================
-#  SCREEN APP  (lives as device_app.py on the server, app.py on device)
+#  SCREEN APP  (device_app.py in the repo, app.py on the device)
 # =====================================================================
-#  Capabilities: trains, weather, scrolling messages, a .bin animation
-#  pulled from GitHub, and a clock. WHICH of these show, and how bright,
-#  is decided by the SERVER's schedule (so the phone app can edit it later).
-#  This file just obeys: it renders whatever modes the server allows, at
-#  whatever brightness the server sends.
+#  Standalone: the screen fetches its own data. No server, no accounts.
+#    trains   -> Rail Data Marketplace, straight from the device
+#    weather  -> OpenWeather, straight from the device
+#    news     -> news.json, written hourly by a GitHub Action
+#    anim     -> a .bin exported on the laptop and pushed to GitHub
+#  WHICH of these show, when, and how bright comes from config.json in
+#  the GitHub repo. Edit it there and the screen picks it up within a few
+#  minutes. The last good copy is cached on flash for offline boots.
 #
 #  No crash handler at the bottom on purpose -- the bootloader handles that.
 # =====================================================================
@@ -17,29 +20,53 @@ import interstate75
 import machine
 import gc
 import os
+import json
+
+# Must match "firmware" in config.json -- the bootloader refuses to install
+# a download whose marker doesn't match the version it was told to fetch.
+FW_VERSION = "33"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
-# device separately — this file is public and is also served over OTA, so
+# device separately — this file is public and is fetched over OTA, so
 # nothing sensitive can sit in it. Copy device_config.example.py, fill it in,
 # and put it on the device alongside app.py.
 try:
-    from device_config import (
-        DEVICE_SECRET, WIFI_SSID, WIFI_PASSWORD, SERVER_URL, DEVICE_ID)
+    from device_config import WIFI_SSID, WIFI_PASSWORD, OWM_API_KEY, RDM_API_KEY
 except ImportError:
     # No config on the device yet. Fail loud rather than silently running with
     # blank credentials and looping on a connection that can never succeed.
     raise RuntimeError(
         "device_config.py missing — copy device_config.example.py, fill in the "
-        "WiFi and device credentials, and flash it alongside app.py")
+        "WiFi credentials and API keys, and flash it alongside app.py")
 
-POLL_INTERVAL = 20           # seconds between server data polls
-SCREEN_SECONDS = 12          # seconds each screen shows before the loop advances
+REPO_RAW = "https://raw.githubusercontent.com/JakeOOS/led-screen-server"
+CONFIG_URL = REPO_RAW + "/main/config.json"
+WANIM_URL = REPO_RAW + "/main/weather_anims/"
+NEWS_URL = REPO_RAW + "/data/news.json"      # written by .github/workflows/news.yml
+RDM_URL = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
+OWM_URL = "https://api.openweathermap.org/data/2.5/forecast?units=metric&cnt=16"
 
-# The special animation you store in GitHub as a raw .bin (64x32x3 per frame)
-ANIM_URL = "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin"
-FRAME_SIZE = 64 * 32 * 3
+# Seconds between refreshes. At most one fetch runs per screen change, so a
+# network stall lands between screens instead of freezing mid-animation.
+CONFIG_REFRESH = 300
+TRAINS_REFRESH = 60
+WEATHER_REFRESH = 1800
+NEWS_REFRESH = 900
+CLOCK_REFRESH = 86400
 ANIM_REFRESH = 3600          # re-download the animation at most once an hour
+RETRY_SECONDS = 60           # wait this long after a failed fetch
+
+FRAME_SIZE = 64 * 32 * 3
+
+# Used until config.json has been fetched or read from the flash cache.
+CFG = {
+    "screen_seconds": 12,
+    "lat": "51.5074", "lon": "-0.1278",
+    "anim_url": "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin",
+    "boards": [],
+    "schedule": [{"from": 0, "brightness": 0.5, "screens": ["CLOCK"]}],
+}
 
 # --- COLORS ---
 COL_WHITE  = (255, 255, 255)
@@ -227,52 +254,374 @@ def connect_wifi():
             max_wait -= 1
     return wlan.isconnected()
 
+def wifi_up():
+    return network.WLAN(network.STA_IF).isconnected()
+
 def check_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    if not wlan.isconnected(): return connect_wifi()
+    if not wifi_up(): return connect_wifi()
     return True
 
 # =====================================================================
-# --- ASK THE SERVER WHAT TO SHOW ---
+# --- CLOCK (NTP + UK daylight saving, worked out on the device) ---
 # =====================================================================
-def fetch_display_state(current_state):
+CLOCK = {"ok": False}
+
+def sync_clock():
+    try:
+        import ntptime
+        ntptime.settime()            # sets the RTC to UTC
+        CLOCK["ok"] = True
+        return True
+    except Exception as e:
+        print("NTP failed:", e)
+        return False
+
+def _dow(y, m, d):
+    """Day of week, 0 = Sunday."""
+    t = (0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4)
+    if m < 3:
+        y -= 1
+    return (y + y // 4 - y // 100 + y // 400 + t[m - 1] + d) % 7
+
+def _is_bst(tm):
+    """UK summer time runs from 01:00 UTC on the last Sunday of March to
+    01:00 UTC on the last Sunday of October."""
+    y, m, d, h = tm[0], tm[1], tm[2], tm[3]
+    if m < 3 or m > 10:
+        return False
+    if 3 < m < 10:
+        return True
+    last_sun = 31 - _dow(y, m, 31)
+    if m == 3:
+        return d > last_sun or (d == last_sun and h >= 1)
+    return d < last_sun or (d == last_sun and h < 1)
+
+def uk_now():
+    t = time.time()
+    if _is_bst(time.gmtime(t)):
+        t += 3600
+    return time.gmtime(t)
+
+# =====================================================================
+# --- CONFIG (config.json in the GitHub repo, cached on flash) ---
+# =====================================================================
+CONFIG_CACHE = "config_cache.json"
+_cfg_text = [""]
+
+def _read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+def _apply_config(text):
+    cfg = json.loads(text)
+    if not (isinstance(cfg, dict) and cfg.get("schedule")):
+        raise ValueError("config has no schedule")
+    CFG.update(cfg)
+
+def load_cached_config():
+    text = _read(CONFIG_CACHE)
+    if not text:
+        return False
+    try:
+        _apply_config(text)
+        _cfg_text[0] = text
+        return True
+    except Exception as e:
+        print("Cached config unusable:", e)
+        return False
+
+def fetch_config():
     try:
         gc.collect()
-        url = SERVER_URL + "/api/device/" + DEVICE_ID + "/display"
-        headers = {}
-        if DEVICE_SECRET:
-            headers["x-device-secret"] = DEVICE_SECRET
-        # Keep this short: the poll runs inside the render loop, so the
-        # screen is frozen for however long this request takes.
-        r = urequests.get(url, headers=headers, timeout=6)
-        if r.status_code == 200:
-            data = r.json()
+        r = urequests.get(CONFIG_URL + "?t=" + str(time.ticks_ms()), timeout=8)
+        if r.status_code != 200:
+            print("Config status", r.status_code)
             r.close()
-            trains = []
-            for row in data.get("trains", []):
-                times = [{"text": t["text"], "color": tuple(t["color"])} for t in row.get("times", [])]
-                trains.append({"badge": row["badge"], "badge_col": tuple(row["badge_col"]), "times": times})
-            return {
-                "brightness": data.get("brightness", 0.6),
-                "allowed_modes": data.get("allowed_modes", ["TRAINS", "WEATHER"]),
-                "trains": trains,
-                "weather": data.get("weather", []),
-                "message": data.get("message", ""),
-                "reboot": data.get("reboot", False),
-                "epoch": data.get("epoch", 0),
-                "tz_offset": data.get("tz_offset", 0),
-                "anim_version": data.get("anim_version", 0),
-                "wanim_version": data.get("wanim_version", 0),
-                "news": data.get("news", ""),
-                "paired": data.get("paired", True),
-                "pair_code": data.get("pair_code", ""),
-            }
-        else:
-            print("Server status", r.status_code)
-            r.close()
+            return False
+        text = r.text.strip()
+        r.close()
+        _apply_config(text)
+        if text != _cfg_text[0]:         # only touch flash when it changed
+            _cfg_text[0] = text
+            try:
+                with open(CONFIG_CACHE, "w") as f:
+                    f.write(text)
+            except OSError:
+                pass
+        return True
     except Exception as e:
-        print("Server poll failed:", e)
-    return current_state
+        print("Config fetch failed:", e)
+        return False
+
+def active_band(hour):
+    """The schedule entry in force at this hour: the last one whose "from"
+    has passed. Before the first entry's "from", the last entry carries on
+    overnight."""
+    bands = CFG.get("schedule") or []
+    best = None
+    for b in bands:
+        if b.get("from", 0) <= hour:
+            best = b
+    return best or (bands[-1] if bands else {})
+
+# =====================================================================
+# --- LIVE DATA (fetched straight from the APIs) ---
+# =====================================================================
+DATA = {"stations": {}, "rev": 0, "weather": [], "news": ""}
+
+def stream_items(raw, key, on_item):
+    """Call on_item(dict) for each object in the JSON array at `key`, reading
+    the response in small chunks. The rail and weather responses are tens of
+    KB, far too big to parse whole on this board; one element at a time is
+    under a KB. Returns how many items were delivered."""
+    needle = b'"' + key + b'"'
+    buf = b""
+    started = False
+    depth = 0
+    in_str = False
+    esc = False
+    item = bytearray()
+    count = 0
+    while True:
+        chunk = raw.read(512)
+        if not chunk:
+            break
+        if not started:
+            buf += chunk
+            i = buf.find(needle)
+            if i < 0:
+                buf = buf[-len(needle):]
+                continue
+            j = i + len(needle)
+            while j < len(buf) and buf[j] in b" :\r\n\t":
+                j += 1
+            if j >= len(buf):
+                buf = buf[i:]            # value starts in the next chunk
+                continue
+            if buf[j] != 91:             # not "[" -- null, e.g. no services
+                return 0
+            chunk = buf[j + 1:]
+            buf = b""
+            started = True
+        for b in chunk:
+            if depth == 0:
+                if b == 123:             # {
+                    depth = 1
+                    item = bytearray(b"{")
+                elif b == 93:            # ] -- end of the array
+                    return count
+                continue
+            item.append(b)
+            if in_str:
+                if esc:
+                    esc = False
+                elif b == 92:            # backslash
+                    esc = True
+                elif b == 34:            # "
+                    in_str = False
+            elif b == 34:
+                in_str = True
+            elif b == 123:
+                depth += 1
+            elif b == 125:               # }
+                depth -= 1
+                if depth == 0:
+                    try:
+                        on_item(json.loads(bytes(item)))
+                        count += 1
+                    except Exception as e:
+                        print("Bad item:", e)
+                    item = bytearray()
+    return count
+
+def station_codes():
+    out = []
+    for b in CFG.get("boards", []):
+        s = b.get("station")
+        if s and s not in out:
+            out.append(s)
+    return out
+
+def _hhmm(s):
+    try:
+        return int(s[0:2]) * 60 + int(s[3:5])
+    except Exception:
+        return -1
+
+def fetch_station(crs):
+    """Departures from one station, kept as (destination, minute-of-day,
+    colour). minute-of-day is None for a cancelled service."""
+    wanted = []
+    for b in CFG.get("boards", []):
+        if b.get("station") == crs:
+            wanted.extend(b.get("match", []))
+    out = []
+
+    def on_item(t):
+        try:
+            dest = t["destination"][0]["locationName"]
+        except Exception:
+            return
+        if len(out) >= 24 or not any(x in dest for x in wanted):
+            return
+        std = t.get("std") or ""
+        etd = t.get("etd") or ""
+        if etd == "Cancelled":
+            out.append((dest, None, COL_RED))
+        elif ":" in etd:
+            out.append((dest, _hhmm(etd), COL_ORANGE))
+        elif etd == "Delayed":
+            out.append((dest, _hhmm(std), COL_ORANGE))
+        else:
+            out.append((dest, _hhmm(std), COL_GREEN))
+
+    try:
+        gc.collect()
+        r = urequests.get(RDM_URL + crs, timeout=8, headers={
+            "x-apikey": RDM_API_KEY, "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"})
+        if r.status_code != 200:
+            print("RDM", crs, "status", r.status_code)
+            r.close()
+            return False
+        try:
+            stream_items(r.raw, b"trainServices", on_item)
+        finally:
+            r.close()
+        DATA["stations"][crs] = out
+        DATA["rev"] += 1
+        return True
+    except Exception as e:
+        print("RDM error", crs, e)
+        return False
+
+def build_trains(now_min):
+    """Rows for draw_train_dashboard. Minutes are counted from the device's
+    own clock, so they keep ticking down between fetches."""
+    rows = []
+    for b in CFG.get("boards", []):
+        match = b.get("match", [])
+        times = []
+        for dest, when, col in DATA["stations"].get(b.get("station"), ()):
+            if not any(x in dest for x in match):
+                continue
+            if when is None:
+                times.append({"text": "CNCL", "color": col})
+            elif when >= 0:
+                diff = when - now_min
+                if diff < -1000:
+                    diff += 24 * 60
+                if diff < -1:
+                    continue
+                times.append({"text": "NOW" if diff <= 0 else "%dM" % diff,
+                              "color": col})
+            if len(times) >= 6:
+                break
+        rows.append({"badge": b.get("badge", "?"),
+                     "badge_col": tuple(b.get("badge_col", COL_GREY)),
+                     "times": times})
+    return rows
+
+def fetch_weather():
+    """Today and tomorrow: high, low and a condition for the animated clip."""
+    days = {}
+    order = []
+
+    def on_item(item):
+        stamp = item["dt_txt"]
+        date_str = stamp[0:10]
+        hour = int(stamp[11:13])
+        if date_str not in days:
+            days[date_str] = {"temps": [], "icons": []}
+            order.append(date_str)
+        d = days[date_str]
+        d["temps"].append(item["main"]["temp"])
+        if 6 <= hour <= 21:
+            cond = item["weather"][0]["main"].lower()
+            if "rain" in cond or "drizzle" in cond:
+                d["icons"].append("rain")
+            elif "snow" in cond:
+                d["icons"].append("snow")
+            elif "thunder" in cond:
+                d["icons"].append("thunderstorm")
+            else:
+                # OWM calls 11-25% coverage "Clouds" ("few clouds"),
+                # which reads as a sunny day. Judge by actual coverage.
+                pct = (item.get("clouds") or {}).get("all", 100)
+                d["icons"].append("clear" if pct <= 40 else "clouds")
+
+    try:
+        gc.collect()
+        url = OWM_URL + "&lat=%s&lon=%s&appid=%s" % (
+            CFG.get("lat"), CFG.get("lon"), OWM_API_KEY)
+        r = urequests.get(url, timeout=8)
+        if r.status_code != 200:
+            print("OWM status", r.status_code)
+            r.close()
+            return False
+        try:
+            stream_items(r.raw, b"list", on_item)
+        finally:
+            r.close()
+        out = []
+        for date_str in order[:2]:
+            dd = days[date_str]
+            icons = dd["icons"] or ["clouds"]
+            if icons.count("rain") >= 2:
+                mapped = "rain"
+            else:
+                non_rain = [c for c in icons if c != "rain"] or icons
+                mapped = non_rain[0]
+                for c in non_rain:
+                    if non_rain.count(c) > non_rain.count(mapped):
+                        mapped = c
+            out.append({"high": round(max(dd["temps"])),
+                        "low": round(min(dd["temps"])), "icon_name": mapped})
+        if not out:
+            return False
+        DATA["weather"] = out
+        return True
+    except Exception as e:
+        print("OWM error", e)
+        return False
+
+def fetch_news():
+    try:
+        gc.collect()
+        r = urequests.get(NEWS_URL + "?t=" + str(time.ticks_ms()), timeout=8)
+        if r.status_code != 200:
+            print("News status", r.status_code)
+            r.close()
+            return False
+        DATA["news"] = str(r.json().get("text", ""))
+        r.close()
+        return True
+    except Exception as e:
+        print("News fetch failed:", e)
+        return False
+
+def wanted_jobs(screens):
+    """(name, refresh seconds) for everything the current schedule needs."""
+    jobs = [("clock", CLOCK_REFRESH)]
+    if "TRAINS" in screens:
+        for crs in station_codes():
+            jobs.append(("trains:" + crs, TRAINS_REFRESH))
+    if "WEATHER" in screens:
+        jobs.append(("weather", WEATHER_REFRESH))
+    if "NEWS" in screens:
+        jobs.append(("news", NEWS_REFRESH))
+    jobs.append(("config", CONFIG_REFRESH))
+    return jobs
+
+def run_job(name):
+    if name == "clock":   return sync_clock()
+    if name == "config":  return fetch_config()
+    if name == "weather": return fetch_weather()
+    if name == "news":    return fetch_news()
+    return fetch_station(name[7:])       # "trains:XXX"
 
 # =====================================================================
 # --- ANIMATION (.bin from GitHub) ---
@@ -348,11 +697,10 @@ def build_anim_pens():
         pens.append(cp(lut[pal[i * 3]], lut[pal[i * 3 + 1]], lut[pal[i * 3 + 2]]))
     ANIM["pens"] = pens
 
-def fetch_animation(url=None, secret=False, dest="anim.bin"):
+def fetch_animation(url, dest="anim.bin"):
     """Download a .bin to dest, being careful with limited flash. Returns a
     short status string: 'OK', 'HTTP nnn', 'FULL nn' (disk), 'BAD SIZE', or
-    'ERR n'. url defaults to the standard ANIM_URL; secret=True sends the
-    device secret header (needed for the server's preview endpoint)."""
+    'ERR n'."""
     print("Fetching animation... free:", free_bytes())
     gc.collect()
     tmp = dest + ".tmp"
@@ -360,9 +708,7 @@ def fetch_animation(url=None, secret=False, dest="anim.bin"):
     try: os.remove(tmp)
     except OSError: pass
     try:
-        headers = {"x-device-secret": DEVICE_SECRET} if secret else {}
-        r = urequests.get((url or ANIM_URL) + "?t=" + str(time.ticks_ms()),
-                          headers=headers, timeout=20)
+        r = urequests.get(url + "?t=" + str(time.ticks_ms()), timeout=20)
         if r.status_code != 200:
             code = r.status_code
             r.close()
@@ -425,39 +771,29 @@ def fetch_animation(url=None, secret=False, dest="anim.bin"):
 # --- WEATHER-SCREEN ANIMATION ---
 # =====================================================================
 # One full-frame 64x32 clip showing today's condition; the temps and a
-# short divider are overlaid on top. Clips live on the server
-# (weather_anims/); the device refetches when the forecast condition or
-# the server's clip set (wanim_version) changes.
+# short divider are overlaid on top. Clips live in the repo
+# (weather_anims/); the device refetches when the forecast condition changes.
+# No snow clip exists yet, so snow borrows the rain one.
 WEATHER_ANIM_CONDS = {"clear": "sunny", "clouds": "cloudy", "rain": "rain",
-                      "thunderstorm": "stormy", "snow": "snow"}
+                      "thunderstorm": "stormy", "snow": "rain"}
 WANIM = {
     "L": {"path": "wthr_L.bin", "x": 0, "cond": "", "loaded": False,
           "pens": None, "cur": -1},
 }
-WSTATE = {"drawn": False, "version": -1, "last_try": -9999}
+WSTATE = {"drawn": False, "last_try": -9999}
 
 
 def _wanim_load_conds():
     """Restore which condition the on-flash clip holds (survives reboot)."""
-    try:
-        with open("wthr_meta.txt") as f:
-            parts = f.read().strip().split(",")
-        if len(parts) == 2:
-            WSTATE["version"] = int(parts[0])
-            WANIM["L"]["cond"] = parts[1]
-    except (OSError, ValueError):
-        pass
-    # Tidy up the strip clip from the abandoned split design.
-    try:
-        os.remove("wthr_R.bin")
-    except OSError:
-        pass
+    cond = _read("wthr_meta.txt").split(",")[-1]
+    if cond:
+        WANIM["L"]["cond"] = cond
 
 
 def _wanim_save_conds():
     try:
         with open("wthr_meta.txt", "w") as f:
-            f.write("%d,%s" % (WSTATE["version"], WANIM["L"]["cond"]))
+            f.write(WANIM["L"]["cond"])
     except OSError:
         pass
 
@@ -577,37 +913,9 @@ def draw_status(lines, color=COL_CYAN):
         y += 6
     i75.update()
 
-def draw_checklist(steps):
-    """Boot checklist. steps = list of [label, state] where state is one of
-    'pending' (grey), 'active' (cyan), 'done' (green), 'fail' (red)."""
-    screen.clear()
-    y = 5
-    for label, st in steps:
-        if st == "done":
-            dot = COL_GREEN; txt = COL_WHITE
-        elif st == "active":
-            dot = COL_CYAN; txt = COL_WHITE
-        elif st == "fail":
-            dot = COL_RED; txt = COL_RED
-        else:
-            dot = COL_GREY; txt = COL_GREY
-        graphics.set_pen(screen.create_pen(dot))
-        graphics.rectangle(2, y + 1, 3, 3)
-        screen.text(label, 9, y, txt, font=FONT_3X5)
-        y += 9
-    i75.update()
-
-def draw_pair_screen(code):
-    screen.clear()
-    screen.text("PAIR CODE", 14, 2, COL_CYAN, font=FONT_3X5)
-    cw = len(code) * 6 - 1                         # FONT_BOLD_5X5 is 5 wide + 1 gap
-    x = max(0, (64 - cw) // 2)
-    screen.text(code, x, 11, COL_WHITE, font=FONT_BOLD_5X5)
-    screen.text("ENTER IN APP", 8, 25, COL_GREY, font=FONT_3X5)
-
 def draw_voxel_loader(lit, failed_indices=None):
     """Draw VOXEL centred on screen.
-    V = internal boot   O = server   X = firmware OK   E = APIs   L = ready
+    V = internal boot   O = wifi + clock   X = config   E = live data   L = ready
     lit          = how many letters are solidly lit (0-5)
     failed_indices = set/list of letter indices that failed (shown red)"""
     WORD = "VOXEL"
@@ -652,7 +960,7 @@ def draw_voxel_loader(lit, failed_indices=None):
 
 def draw_error_screen(errors):
     """Dark red background with error names. Shown for 3s after VOXEL if
-    any stage failed. errors = list of short strings e.g. ['SERVER FAIL']."""
+    any stage failed. errors = list of short strings e.g. ['WIFI FAIL']."""
     screen.clear()
     graphics.set_pen(screen.create_pen((100, 0, 0)))
     graphics.clear()
@@ -717,7 +1025,8 @@ def draw_train_dashboard(dashboard_data, ref_time):
         screen.text("CONNECTING...", 5, 12, COL_WHITE, font=FONT_3X5)
         return
     y_offsets = [0, 11, 22]
-    for i in range(3):
+    rows = min(3, len(dashboard_data))
+    for i in range(rows):
         train_row = dashboard_data[i]
         y = y_offsets[i]
         times_list = train_row['times']
@@ -742,7 +1051,7 @@ def draw_train_dashboard(dashboard_data, ref_time):
                 else:
                     screen.text(" | ", current_x, y + 2, train_row['badge_col'], font=FONT_3X5)
                     current_x += sep_width
-    for i in range(3):
+    for i in range(rows):
         train_row = dashboard_data[i]
         y = y_offsets[i]
         graphics.set_pen(screen.create_pen(train_row['badge_col']))
@@ -775,58 +1084,6 @@ def wrap_text_to_lines(text, max_w=62, scale=1):
     if current_line:
         lines.append(current_line)
     return lines
-
-# Display scale used for the "beautiful" oversized message rendering, and the
-# ceiling on how many lines it may take up before we fall back to the normal
-# size (past this, the big font starts looking cramped rather than striking).
-DISPLAY_SCALE = 2
-DISPLAY_MAX_LINES = 3
-
-def draw_phone_screen(msg, ref_time):
-    screen.clear()
-    if not msg:
-        return
-
-    # Prefer a big "display" rendering of the bold font -- only fall back to
-    # the normal size (with scrolling if needed) if the message is too long
-    # to sit statically on screen at the larger scale.
-    big_lines = wrap_text_to_lines(msg, max_w=62, scale=DISPLAY_SCALE)
-    line_h_big = 6 * DISPLAY_SCALE + 1
-    total_height_big = len(big_lines) * line_h_big - 1
-    if len(big_lines) <= DISPLAY_MAX_LINES and total_height_big <= 32:
-        y_start = (32 - total_height_big) // 2
-        for line in big_lines:
-            line_w = get_word_width(line, DISPLAY_SCALE) - 1
-            x = (64 - line_w) // 2
-            screen.text(line, x, y_start, COL_WHITE, font=FONT_BOLD_5X5, scale=DISPLAY_SCALE, spacing=1)
-            y_start += line_h_big
-        return
-
-    lines = wrap_text_to_lines(msg, max_w=62)
-    total_height = len(lines) * 7 - 1
-    if total_height <= 32:
-        y_start = (32 - total_height) // 2
-        for line in lines:
-            line_w = get_word_width(line) - 1
-            x = (64 - line_w) // 2
-            screen.text(line, x, y_start, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
-            y_start += 7
-    else:
-        ms_per_pixel = 150
-        distance = total_height - 32
-        scroll_time = distance * ms_per_pixel
-        cycle_time = scroll_time + 2000
-        current_cycle_time = ref_time % cycle_time
-        if current_cycle_time < scroll_time:
-            offset_y = 0 - (current_cycle_time // ms_per_pixel)
-        else:
-            offset_y = 0 - distance
-        for line in lines:
-            if -7 <= offset_y < 32:
-                line_w = get_word_width(line) - 1
-                x = (64 - line_w) // 2
-                screen.text(line, x, offset_y, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
-            offset_y += 7
 
 def draw_news_screen(text, ref_time):
     """Red NEWS header + the current story in the 4x6 font, scrolling
@@ -868,14 +1125,24 @@ def draw_clock(local_struct):
 # --- CORE LOOP ---
 # =====================================================================
 def main():
+    global CURRENT_BRIGHTNESS, BRIGHTNESS_LUT, current_anim_frame
     print("Boot free bytes:", free_bytes())
-    _wanim_load_conds()   # which weather clips are already on flash
-    state = {"brightness": 0.2, "allowed_modes": ["TRAINS", "WEATHER"],
-             "trains": [], "weather": [], "message": "", "reboot": False,
-             "epoch": 0, "tz_offset": 0, "paired": True, "pair_code": ""}
+    _wanim_load_conds()   # which weather clip is already on flash
+    load_cached_config()
+    # What the bootloader installed, and what it gave up on. Used further
+    # down to decide whether config.json is asking for a firmware update.
+    installed_fw = _read("version.txt")
+    bad_fw = _read("bad_version.txt")
+
+    due = {}              # job name -> when it should next run
+
+    def attempt(name, interval):
+        ok = run_job(name)
+        due[name] = time.time() + (interval if ok else RETRY_SECONDS)
+        return ok
 
     # --- VOXEL boot loader -------------------------------------------
-    # V = internal boot   O = server   X = firmware OK   E = APIs   L = ready
+    # V = internal boot   O = wifi + clock   X = config   E = live data   L = ready
     # Each letter takes at least 1 second. Failed letters go red, then
     # an error screen lists what went wrong for 3 seconds before proceeding.
     LETTER_MIN = 1.0
@@ -894,7 +1161,7 @@ def main():
 
     def wait_min(start_t):
         rem = LETTER_MIN - (time.time() - start_t)
-        if rem > 0:
+        if 0 < rem <= LETTER_MIN:        # the clock sync can jump time.time()
             time.sleep(rem)
 
     # V — internal boot (always succeeds if we got here)
@@ -903,36 +1170,39 @@ def main():
     wait_min(t)
     light(True)
 
-    # O — server connection (retry a few times: WiFi may still be settling
-    # right after boot, and the server can be slow on the first request)
+    # O — wifi, then the clock (retry a few times: WiFi may still be
+    # settling right after boot)
     t = time.time()
-    have_server = False
-    for attempt in range(3):
-        if check_wifi():
-            state = fetch_display_state(state)
-            have_server = bool(state.get("epoch"))
-        if have_server:
+    online = False
+    clock_ok = False
+    for _ in range(3):
+        online = check_wifi()
+        clock_ok = online and attempt("clock", CLOCK_REFRESH)
+        if clock_ok:
             break
         time.sleep(2)
     wait_min(t)
-    light(have_server, "SERVER FAIL" if not have_server else None)
+    light(clock_ok, None if clock_ok else ("CLOCK FAIL" if online else "WIFI FAIL"))
 
-    # X — firmware (always green: if we're running, code loaded fine)
+    # X — config.json from GitHub (the flash copy carries on if this fails)
     t = time.time()
+    have_cfg = online and attempt("config", CONFIG_REFRESH)
     wait_min(t)
-    light(True)
+    light(have_cfg, None if have_cfg else "CONFIG FAIL")
 
-    # E — APIs. Only expect data for modes the server actually scheduled:
-    # with catalogue-based schedules, trains/weather are legitimately empty
-    # when the active time slot doesn't include those screens.
+    # E — live data, but only what the schedule is showing right now
     t = time.time()
-    modes = state.get("allowed_modes", [])
-    weather_ok = bool(state.get("weather")) or "WEATHER" not in modes
-    trains_ok  = bool(state.get("trains"))  or "TRAINS" not in modes
-    api_ok = have_server and weather_ok and trains_ok
-    if have_server:
-        if not weather_ok: errors.append("WEATHER FAIL")
-        if not trains_ok:  errors.append("TRAINS FAIL")
+    api_ok = online
+    if online:
+        screens = active_band(uk_now()[3]).get("screens") or []
+        for name, interval in wanted_jobs(screens):
+            if name in ("clock", "config"):
+                continue
+            if not attempt(name, interval) and name != "news":
+                api_ok = False
+                label = "WEATHER FAIL" if name == "weather" else "TRAINS FAIL"
+                if label not in errors:
+                    errors.append(label)
     wait_min(t)
     light(api_ok, None)    # error labels already appended above
 
@@ -950,103 +1220,80 @@ def main():
     if not errors:
         time.sleep(0.4)
 
-    sync_tick = time.ticks_ms()
-    # If the boot poll succeeded, wait the normal interval before re-polling.
-    # If it failed, poll again straight away so live data appears quickly.
-    last_poll = time.time() if have_server else time.time() - POLL_INTERVAL
+    boot_ticks = time.ticks_ms()
+    fw_armed = False
     last_anim_fetch = -9999
-    last_anim_version = 0
+    last_wifi_try = -9999
     last_brightness = -1
-    last_message = ""
     last_mode = ""
-    priority_until = 0
-    poll_fails = 0
-    global CURRENT_BRIGHTNESS, BRIGHTNESS_LUT, current_anim_frame
-
     last_slot = -1
+    last_min = -1
+    last_rev = -1
+    trains = []
+    cycle = ["CLOCK"]
 
     while True:
         now = time.time()
         now_ticks = time.ticks_ms()
+        tm = uk_now()
+        band = active_band(tm[3])
+        screens = band.get("screens") or ["CLOCK"]
+        screen_seconds = max(3, int(CFG.get("screen_seconds", 12)))
 
-        # Poll on a screen-change boundary so any network stall lands
-        # between screens instead of freezing mid-animation. If we're badly
-        # overdue (single-screen cycle), poll anyway.
-        slot = int(now // SCREEN_SECONDS)
+        # All network work happens on a screen-change boundary so any stall
+        # lands between screens instead of freezing mid-animation.
+        slot = int(now // screen_seconds)
         at_boundary = slot != last_slot
         last_slot = slot
-        poll_due = now - last_poll > POLL_INTERVAL
-        overdue = now - last_poll > POLL_INTERVAL * 4
 
-        if (poll_due and at_boundary or overdue) and check_wifi():
-            gc.collect()             # give TLS the biggest contiguous block we can
-            new_state = fetch_display_state(state)
-            if new_state is state:
-                # Poll failed. Back off so a bad network patch doesn't
-                # freeze the display every cycle, and DON'T touch the
-                # clock sync — the old epoch/tick pair is still valid.
-                poll_fails = min(poll_fails + 1, 5)
-                last_poll = now - POLL_INTERVAL + 15 * poll_fails
-            else:
-                poll_fails = 0
-                if new_state.get("reboot"):
-                    print("Reboot requested by server")
-                    time.sleep(1)
-                    machine.reset()
-                msg = new_state.get("message", "")
-                if msg and msg != last_message:
-                    priority_until = now + SCREEN_SECONDS   # pop a new message up promptly
-                last_message = msg
-                state = new_state
-                sync_tick = now_ticks
-                last_poll = now
+        online = False
+        if at_boundary:
+            if wifi_up():
+                online = True
+            elif now - last_wifi_try > RETRY_SECONDS:
+                last_wifi_try = now
+                online = connect_wifi()
 
-        # Design preview: when the server's anim_version changes, fetch the
-        # preview animation immediately (version > 0) or restore the normal
-        # animation (version back to 0).
-        av = state.get("anim_version", 0)
-        if av != last_anim_version and check_wifi():
-            draw_status(["GETTING", "PREVIEW" if av else "ANIM"])
-            if av:
-                result = fetch_animation(SERVER_URL + "/firmware/preview.bin", secret=True)
-            else:
-                result = fetch_animation()
-            if result != "OK":
-                draw_status(["ANIM FAIL", result], COL_RED)
-                time.sleep(2)
-            last_anim_version = av
-            last_anim_fetch = now
-            current_anim_frame = -1
+        if online:
+            # At most one data fetch per boundary: the first that's due.
+            for name, interval in wanted_jobs(screens):
+                if now >= due.get(name, 0):
+                    gc.collect()         # give TLS the biggest contiguous block we can
+                    attempt(name, interval)
+                    break
 
-        # Refresh the animation hourly, but only if the schedule ever uses it
-        # (and never while a preview is active — it would overwrite it).
-        if check_wifi() and last_anim_version == 0 and ("ANIM" in state.get("allowed_modes", [])) and (now - last_anim_fetch > ANIM_REFRESH):
-            draw_status(["GETTING", "ANIM"])
-            result = fetch_animation()
-            if result != "OK":
-                draw_status(["ANIM FAIL", result], COL_RED)
-                time.sleep(2)
-            last_anim_fetch = now
-            current_anim_frame = -1
+            # Firmware: config.json names the version that should be running.
+            # If it isn't the one installed (and isn't one the bootloader
+            # already rolled back from), reboot so the bootloader fetches it.
+            # Not in the first 5 minutes, so GitHub's cache can't cause a
+            # reboot loop while it still serves the old file.
+            if not fw_armed and time.ticks_diff(now_ticks, boot_ticks) > 300000:
+                fw_armed = True
+            want_fw = str(CFG.get("firmware", ""))
+            if fw_armed and want_fw and installed_fw and want_fw not in (installed_fw, bad_fw):
+                print("Firmware", want_fw, "requested; rebooting to update")
+                draw_status(["UPDATING"])
+                time.sleep(1)
+                machine.reset()
 
-        # Weather clip: refetch when today's forecast condition changes, or
-        # when the server's clip set changes. Done at screen boundaries so
-        # the stall lands between screens.
-        if "WEATHER" in state.get("allowed_modes", []):
-            wv = state.get("wanim_version", 0)
-            if wv != WSTATE["version"]:
-                WANIM["L"]["cond"] = ""
-                WSTATE["version"] = wv
-                _wanim_save_conds()
-            wx = state.get("weather") or []
-            if wx and wv and at_boundary and (now - WSTATE["last_try"] > 30) and check_wifi():
+            # Refresh the animation hourly, but only while the schedule uses it.
+            if "ANIM" in screens and (now - last_anim_fetch > ANIM_REFRESH):
+                draw_status(["GETTING", "ANIM"])
+                result = fetch_animation(CFG.get("anim_url", ""))
+                if result != "OK":
+                    draw_status(["ANIM FAIL", result], COL_RED)
+                    time.sleep(2)
+                last_anim_fetch = now
+                current_anim_frame = -1
+
+            # Weather clip: refetch when today's forecast condition changes.
+            wx = DATA["weather"]
+            if "WEATHER" in screens and wx and (now - WSTATE["last_try"] > 300):
                 want = WEATHER_ANIM_CONDS.get(wx[0].get("icon_name", ""), "")
                 sl = WANIM["L"]
                 if want and want != sl["cond"]:
                     WSTATE["last_try"] = now
-                    res = fetch_animation(
-                        SERVER_URL + "/firmware/weather/" + want + "_L.bin",
-                        dest=sl["path"])
+                    res = fetch_animation(WANIM_URL + want + "_L.bin", dest=sl["path"])
                     if res == "OK":
                         sl["cond"] = want
                         sl["loaded"] = False
@@ -1054,16 +1301,17 @@ def main():
                         WSTATE["drawn"] = False
                         _wanim_save_conds()
                     elif res.startswith("HTTP"):
-                        # Clip not on the server (yet) — stop retrying
-                        # until the condition or clip set changes.
+                        # Clip not in the repo (yet) — stop retrying
+                        # until the condition changes.
                         sl["cond"] = want
                         _wanim_save_conds()
                     else:
                         print("Weather anim fetch", want, res)
 
         # Apply brightness from the schedule when it changes.
-        if state["brightness"] != last_brightness:
-            CURRENT_BRIGHTNESS = state["brightness"]
+        brightness = band.get("brightness", 0.5)
+        if brightness != last_brightness:
+            CURRENT_BRIGHTNESS = brightness
             BRIGHTNESS_LUT = bytearray([int(i * CURRENT_BRIGHTNESS) for i in range(256)])
             screen.reset_pens()
             ANIM["pens"] = None          # rebuild palette pens at new brightness
@@ -1071,42 +1319,29 @@ def main():
             WANIM["L"]["cur"] = -1
             WSTATE["drawn"] = False
             current_anim_frame = -1
-            last_brightness = state["brightness"]
+            last_brightness = brightness
 
-        # If this device isn't paired yet, show its pair code and nothing else.
-        if not state.get("paired", True):
-            draw_pair_screen(state.get("pair_code", ""))
-            i75.update()
-            time.sleep(0.1)
-            continue
+        # Train countdowns only change on the minute or when new data lands.
+        now_min = tm[3] * 60 + tm[4]
+        if now_min != last_min or DATA["rev"] != last_rev:
+            last_min = now_min
+            last_rev = DATA["rev"]
+            trains = build_trains(now_min) if DATA["stations"] else []
 
-        # Local clock, kept accurate from the server's time without needing NTP.
-        if state["epoch"]:
-            elapsed = time.ticks_diff(now_ticks, sync_tick) // 1000
-            local_struct = time.localtime(state["epoch"] + state["tz_offset"] + elapsed)
-        else:
-            local_struct = time.localtime()
+        # Build the cycle from the schedule's screens, dropping any that
+        # have nothing to show right now (no news / no animation file).
+        if at_boundary:
+            cycle = []
+            for m in screens:
+                if m == "ANIM" and not anim_available():
+                    continue
+                if m == "NEWS" and not DATA["news"]:
+                    continue
+                cycle.append(m)
+            if not cycle:
+                cycle = ["CLOCK"]
 
-        # Build the cycle from the schedule's allowed modes, dropping any that
-        # have nothing to show right now (no message / no animation file).
-        allowed = state.get("allowed_modes", ["TRAINS", "WEATHER"])
-        cycle = []
-        for m in allowed:
-            if m == "PHONE" and not state["message"]:
-                continue
-            if m == "ANIM" and not anim_available():
-                continue
-            if m == "NEWS" and not state.get("news"):
-                continue
-            cycle.append(m)
-        if not cycle:
-            cycle = ["CLOCK"]
-
-        # A freshly-arrived message jumps to the front for SCREEN_SECONDS.
-        if now < priority_until and state["message"] and "PHONE" in allowed:
-            mode = "PHONE"
-        else:
-            mode = cycle[int(now // SCREEN_SECONDS) % len(cycle)]
+        mode = cycle[slot % len(cycle)]
 
         if mode == "ANIM" and last_mode != "ANIM":
             current_anim_frame = -1
@@ -1115,12 +1350,11 @@ def main():
             WANIM["L"]["cur"] = -1
         last_mode = mode
 
-        if mode == "TRAINS":    draw_train_dashboard(state["trains"], now_ticks)
-        elif mode == "WEATHER": draw_weather_split(state["weather"], now_ticks)
-        elif mode == "PHONE":   draw_phone_screen(state["message"], now_ticks)
-        elif mode == "NEWS":    draw_news_screen(state.get("news", ""), now_ticks)
+        if mode == "TRAINS":    draw_train_dashboard(trains, now_ticks)
+        elif mode == "WEATHER": draw_weather_split(DATA["weather"], now_ticks)
+        elif mode == "NEWS":    draw_news_screen(DATA["news"], now_ticks)
         elif mode == "ANIM":    draw_animation(now_ticks)
-        elif mode == "CLOCK":   draw_clock(local_struct)
+        elif mode == "CLOCK":   draw_clock(tm)
         else:                   screen.clear()
 
         i75.update()
@@ -1130,4 +1364,3 @@ def main():
 # No try/except here on purpose -- the bootloader handles crashes/rollback.
 if __name__ == "__main__":
     main()
-

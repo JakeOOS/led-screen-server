@@ -1,7 +1,8 @@
 # Stand-ins for the MicroPython-only modules device_app.py imports (interstate75,
-# machine, network, urequests), so the exact same rendering code can run on a
+# machine, network, urequests, ntptime), so the exact same code can run on a
 # desktop Python interpreter for the simulator in simulate.py.
 
+import os
 import sys
 import time
 import types
@@ -106,9 +107,15 @@ def install():
             self.status_code = r.status_code
             self.headers = r.headers
             self.raw = r.raw
+            self.raw.decode_content = True   # the device never asks for gzip
+
+        @property
+        def text(self):
+            return self.raw.read().decode()
 
         def json(self):
-            return self._r.json()
+            import json
+            return json.loads(self.text)
 
         def close(self):
             self._r.close()
@@ -119,3 +126,18 @@ def install():
 
     urequests_mod.get = get
     sys.modules["urequests"] = urequests_mod
+
+    ntptime_mod = types.ModuleType("ntptime")
+    ntptime_mod.settime = lambda: None       # the desktop clock is already right
+    sys.modules["ntptime"] = ntptime_mod
+
+    # No device_config.py on the desktop: stand one in, with API keys taken
+    # from the environment so `--live` can fetch real data.
+    try:
+        import device_config  # noqa: F401
+    except ImportError:
+        cfg_mod = types.ModuleType("device_config")
+        cfg_mod.WIFI_SSID = cfg_mod.WIFI_PASSWORD = ""
+        cfg_mod.OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
+        cfg_mod.RDM_API_KEY = os.environ.get("RDM_API_KEY", "")
+        sys.modules["device_config"] = cfg_mod

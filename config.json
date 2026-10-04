@@ -1,0 +1,27 @@
+{
+  "firmware": "33",
+
+  "screen_seconds": 12,
+
+  "schedule": [
+    {"from": 5,  "brightness": 1.0, "screens": ["TRAINS", "WEATHER", "NEWS"]},
+    {"from": 12, "brightness": 0.5, "screens": ["TRAINS", "WEATHER", "NEWS", "ANIM"]},
+    {"from": 19, "brightness": 0.2, "screens": ["ANIM", "NEWS", "CLOCK"]}
+  ],
+
+  "boards": [
+    {"badge": "TLK", "badge_col": [150, 0, 0], "station": "TUH",
+     "match": ["St Albans", "Luton", "Bedford", "Farringdon", "Elephant & Castle"]},
+    {"badge": "LBG", "badge_col": [0, 200, 50], "station": "TUH",
+     "match": ["London Bridge"]},
+    {"badge": "VIC", "badge_col": [0, 150, 200], "station": "WDU",
+     "match": ["Victoria"]}
+  ],
+
+  "lat": "51.5074",
+  "lon": "-0.1278",
+
+  "anim_url": "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin",
+
+  "news_interests": "major UK and world events, science, technology, London"
+}
