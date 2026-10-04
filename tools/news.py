@@ -1,23 +1,27 @@
-"""Decide whether anything in the news deserves the screen, and write news.json.
+"""The news screen's two chores, run by a scheduled Claude routine.
 
-Run hourly by .github/workflows/news.yml, which publishes the result to the
-repo's `data` branch for the device to fetch. Claude is shown the current BBC
-headlines and the last story it put up, and replies with a single line for
-the screen -- or, most hours, NONE. The news screen only exists while there
-is a story: one that makes the cut stays up for "news_hours" (config.json),
-then the screen drops out of the rotation until the next one.
+A scheduled Claude session decides whether anything in the news deserves the
+screen; this script does everything around that decision:
 
-Usage: python tools/news.py <previous news.json> <output news.json>
+    python3 tools/news.py brief            # print the rules, the last story
+                                           # shown and the current headlines
+    python3 tools/news.py publish "TEXT"   # put a story on the screen
+    python3 tools/news.py publish NONE     # nothing qualifies this hour
+
+`publish` keeps news.json on the repo's `data` branch, which is where the
+screen fetches it. The news screen only exists while there is a story: one
+that makes the cut stays up for "news_hours" (config.json), then the screen
+drops out of the rotation until the next one. The branch is a single commit
+that gets replaced, so main's history stays clean.
 """
 
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
-
-import anthropic
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NEWS_FEEDS = [
@@ -26,6 +30,46 @@ NEWS_FEEDS = [
 ]
 DEFAULT_INTERESTS = "major UK and world events, science, technology, London"
 DEFAULT_HOURS = 6
+
+RULES = """\
+You decide whether a small 64x32 LED screen in a home should interrupt its
+usual train times and weather with a news story. The screen is for the rare
+story the household would want to be told about the moment they walk past: a
+major event, a real turning point, or something that directly affects life in
+London. The household's interests are: {interests}.
+
+Ordinary news does not qualify, however prominent the headline: routine
+politics, ongoing stories with no decisive development, opinion, sport
+results, celebrity and human-interest pieces. On most hours nothing
+qualifies, and the right answer is NONE. Also answer NONE if the best story is
+essentially the one previously shown, unless there has been a major new
+development in it.
+
+When a story does qualify, rewrite it as one plain-text line, max 110
+characters, no quotes, no markdown, understandable without context."""
+
+
+def git(*args, stdin=None):
+    return subprocess.run(["git", *args], cwd=HERE, input=stdin, text=True,
+                          capture_output=True)
+
+
+def load_config():
+    try:
+        with open(os.path.join(HERE, "..", "config.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def load_previous():
+    """news.json as it currently stands on the data branch ({} if none)."""
+    if git("fetch", "-q", "origin", "data").returncode != 0:
+        return {}
+    try:
+        return json.loads(git("show", "FETCH_HEAD:news.json").stdout)
+    except ValueError:
+        return {}
 
 
 def fetch_headlines():
@@ -41,83 +85,57 @@ def fetch_headlines():
                 if title:
                     out.append(f"- {title}" + (f" — {desc[:150]}" if desc else ""))
         except Exception as e:
-            print("RSS error", url, e)
+            print("RSS error", url, e, file=sys.stderr)
     return out
 
 
-def pick_story(headlines, interests, last):
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=500,
-        output_config={"effort": "low"},
-        system=(
-            "You decide whether a small 64x32 LED screen in a home should "
-            "interrupt its usual train times and weather with a news story. "
-            "You are shown current headlines once an hour. The screen is "
-            "for the rare story the household would want to be told about "
-            "the moment they walk past: a major event, a real turning "
-            "point, or something that directly affects life in London. The "
-            "household's interests are: " + interests + ". "
-            "Ordinary news does not qualify, however prominent the "
-            "headline: routine politics, ongoing stories with no decisive "
-            "development, opinion, sport results, celebrity and "
-            "human-interest pieces. On most hours nothing qualifies, and "
-            "the right answer is exactly NONE. Also answer NONE if the "
-            "best story is essentially the one previously shown, unless "
-            "there has been a major new development in it. "
-            "When a story does qualify, reply with it rewritten as one "
-            "plain-text line, max 110 characters, no quotes, no markdown, "
-            "understandable without context, and nothing else."
-        ),
-        messages=[{
-            "role": "user",
-            "content": ("Previously shown story: "
-                        + (last or "(none)")
-                        + "\n\nCurrent headlines:\n"
-                        + "\n".join(headlines)),
-        }],
-    )
-    text = ""
-    if response.stop_reason != "refusal":
-        text = next((b.text for b in response.content if b.type == "text"), "").strip()
-    return "" if text.upper() == "NONE" else text[:160]
-
-
-def main():
-    prev_path, out_path = sys.argv[1], sys.argv[2]
-    try:
-        with open(prev_path) as f:
-            prev = json.load(f)
-    except (OSError, ValueError):
-        prev = {}
-    try:
-        with open(os.path.join(HERE, "..", "config.json")) as f:
-            cfg = json.load(f)
-    except (OSError, ValueError):
-        cfg = {}
-    interests = cfg.get("news_interests") or DEFAULT_INTERESTS
-    hold = float(cfg.get("news_hours") or DEFAULT_HOURS) * 3600
-
-    headlines = fetch_headlines()
-    if not headlines:
-        sys.exit("no headlines fetched; leaving news.json as it is")
-
+def next_state(prev, text, now, hold):
+    """What news.json should say given this hour's decision ('' = NONE)."""
     last = prev.get("last_story", "")
     since = prev.get("since", 0)
-    now = int(time.time())
-    text = pick_story(headlines, interests, last)
-    print("Claude:", repr(text or "NONE"))
     if text:
-        out = {"text": text, "last_story": text, "since": now}
-    elif prev.get("text") and now - since < hold:
-        out = prev                       # nothing new; the current story stays up
-    else:
-        out = {"text": "", "last_story": last, "since": since}
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(out, f)
+        return {"text": text[:160], "last_story": text[:160], "since": now}
+    if prev.get("text") and now - since < hold:
+        return prev                      # nothing new; the current story stays up
+    return {"text": "", "last_story": last, "since": since}
+
+
+def brief():
+    headlines = fetch_headlines()
+    if not headlines:
+        sys.exit("no headlines fetched")
+    prev = load_previous()
+    print(RULES.format(interests=load_config().get("news_interests") or DEFAULT_INTERESTS))
+    print("\nPreviously shown story:", prev.get("last_story") or "(none)")
+    print("\nCurrent headlines:\n" + "\n".join(headlines))
+
+
+def publish(text):
+    text = " ".join(text.split())
+    if text.upper() == "NONE":
+        text = ""
+    prev = load_previous()
+    hold = float(load_config().get("news_hours") or DEFAULT_HOURS) * 3600
+    out = next_state(prev, text, int(time.time()), hold)
+    if out == prev:
+        print("unchanged:", repr(out.get("text", "")))
+        return
+    blob = git("hash-object", "-w", "--stdin", stdin=json.dumps(out)).stdout.strip()
+    tree = git("mktree", stdin=f"100644 blob {blob}\tnews.json\n").stdout.strip()
+    ident = ["-c", "user.name=voxel-news", "-c", "user.email=voxel-news@users.noreply.github.com"]
+    commit = git(*ident, "commit-tree", tree, "-m", "news").stdout.strip()
+    if not commit:
+        sys.exit("could not build the news commit")
+    push = git("push", "-f", "origin", f"{commit}:refs/heads/data")
+    if push.returncode != 0:
+        sys.exit("push to data branch failed: " + push.stderr.strip())
+    print("published:", repr(out["text"]))
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 2 and sys.argv[1] == "brief":
+        brief()
+    elif len(sys.argv) == 3 and sys.argv[1] == "publish":
+        publish(sys.argv[2])
+    else:
+        sys.exit(__doc__)

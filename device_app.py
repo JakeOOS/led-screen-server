@@ -4,7 +4,7 @@
 #  Standalone: the screen fetches its own data. No server, no accounts.
 #    trains   -> Rail Data Marketplace, straight from the device
 #    weather  -> OpenWeather, straight from the device
-#    news     -> news.json, written hourly by a GitHub Action
+#    news     -> news.json, kept up to date by a scheduled Claude routine
 #    anim     -> a .bin exported on the laptop and pushed to GitHub
 #  WHICH of these show, when, and how bright comes from config.json in
 #  the GitHub repo. Edit it there and the screen picks it up within a few
@@ -43,7 +43,7 @@ except ImportError:
 REPO_RAW = "https://raw.githubusercontent.com/JakeOOS/led-screen-server"
 CONFIG_URL = REPO_RAW + "/main/config.json"
 WANIM_URL = REPO_RAW + "/main/weather_anims/"
-NEWS_URL = REPO_RAW + "/data/news.json"      # written by .github/workflows/news.yml
+NEWS_URL = REPO_RAW + "/data/news.json"      # written by tools/news.py
 RDM_URL = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard/"
 OWM_URL = "https://api.openweathermap.org/data/2.5/forecast?units=metric&cnt=16"
 
