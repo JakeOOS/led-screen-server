@@ -24,7 +24,7 @@ import json
 
 # Must match "firmware" in config.json -- the bootloader refuses to install
 # a download whose marker doesn't match the version it was told to fetch.
-FW_VERSION = "34"
+FW_VERSION = "35"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
@@ -145,6 +145,7 @@ FONT_4X6 = {
     ' ': ["   ", "   ", "   ", "   ", "   ", "   "], '-': ["    ", "    ", "####", "    ", "    ", "    "],
     ':': [" ", "#", " ", "#", " ", " "], '.': [" ", " ", " ", " ", " ", "#"],
     '!': ["#", "#", "#", "#", " ", "#"], '?': [" ## ", "#  #", "  # ", " #  ", "    ", " #  "],
+    ',': ["  ", "  ", "  ", "  ", " #", "# "], "'": ["#", "#", " ", " ", " ", " "],
     '|': [" # ", " # ", " # ", " # ", " # ", " # "]
 }
 
@@ -1082,22 +1083,14 @@ def draw_train_dashboard(dashboard_data, ref_time):
             graphics.set_pen(screen.create_pen(COL_GREY))
             graphics.line(0, y + 10, 64, y + 10)
 
-def get_word_width(word, scale=1):
-    w = 0
-    for c in word:
-        w += len(FONT_BOLD_5X5.get(c, ["     "])[0]) * scale + 1
-    return w
-
-def wrap_text_to_lines(text, max_w=62, scale=1):
-    words = text.split(" ")
+def wrap_text_to_lines(text, max_w=62, font=FONT_BOLD_5X5):
     lines = []
     current_line = ""
-    for word in words:
+    for word in text.split(" "):
         if not word: continue
-        current_w = get_word_width(current_line + " " + word, scale) if current_line else get_word_width(word, scale)
         if not current_line:
             current_line = word
-        elif current_w <= max_w:
+        elif _text_w(current_line + " " + word, font) <= max_w:
             current_line += " " + word
         else:
             lines.append(current_line)
@@ -1106,28 +1099,41 @@ def wrap_text_to_lines(text, max_w=62, scale=1):
         lines.append(current_line)
     return lines
 
-def draw_news_screen(text, ref_time):
-    """Red NEWS header + the current story in the 4x6 font, scrolling
-    vertically when it doesn't fit the area below the header."""
+# The story is set in the light 4x6 face: single-pixel strokes, so more of it
+# fits on a line and it reads less heavily than the bold font.
+NEWS_FONT = FONT_4X6
+NEWS_HOLD_MS = 3000          # pause at the top, and again at the bottom
+NEWS_LINE_H = 8              # 6px letters + 2px between lines
+NEWS_LINES = 3               # full lines that fit under the header
+
+def draw_news_screen(text, elapsed, avail=12000):
+    """Red NEWS header + the current story below it. If the story doesn't
+    fit, it holds at the top, scrolls to the end, holds at the bottom, then
+    returns to the top. elapsed = ms since the news screen came on; avail =
+    ms the screen has in total, so the scroll is paced to finish in time."""
     screen.clear()
     if text:
-        lines = wrap_text_to_lines(text, max_w=62)
+        lines = wrap_text_to_lines(text, 62, NEWS_FONT)
         area_top = 9
-        area_h = 32 - area_top
-        total_h = len(lines) * 7 - 1
-        if total_h <= area_h:
-            y = area_top + (area_h - total_h) // 2
+        n = len(lines)
+        if n <= NEWS_LINES:
+            y = area_top + (NEWS_LINES - n) * NEWS_LINE_H // 2
         else:
-            ms_per_pixel = 150
-            distance = total_h - area_h
+            # Scroll by whole lines' worth, so both holds show full lines.
+            distance = (n - NEWS_LINES) * NEWS_LINE_H
+            ms_per_pixel = max(40, min(150, (avail - 2 * NEWS_HOLD_MS) // distance))
             scroll_time = distance * ms_per_pixel
-            cycle = scroll_time + 2000
-            t = ref_time % cycle
-            y = area_top - (t // ms_per_pixel if t < scroll_time else distance)
+            t = elapsed % (scroll_time + 2 * NEWS_HOLD_MS)
+            if t < NEWS_HOLD_MS:
+                y = area_top
+            elif t < NEWS_HOLD_MS + scroll_time:
+                y = area_top - (t - NEWS_HOLD_MS) // ms_per_pixel
+            else:
+                y = area_top - distance
         for line in lines:
-            if -7 <= y < 32:
-                screen.text(line, 1, y, COL_WHITE, font=FONT_BOLD_5X5, spacing=1)
-            y += 7
+            if -NEWS_LINE_H <= y < 32:
+                screen.text(line, 1, y, COL_WHITE, font=NEWS_FONT)
+            y += NEWS_LINE_H
     # Header drawn last so scrolled lines pass underneath it.
     graphics.set_pen(screen.create_pen(COL_BLACK))
     graphics.rectangle(0, 0, 64, 8)
@@ -1248,6 +1254,8 @@ def main():
     last_brightness = -1
     last_mode = ""
     intro_for = ""        # the story the news intro last played for
+    news_start = 0        # when the news screen last came on, and how long it has
+    news_avail = 12000
     intro_try = -9999
     last_slot = -1
     last_min = -1
@@ -1385,16 +1393,18 @@ def main():
             WSTATE["drawn"] = False
             WANIM["L"]["cur"] = -1
         # A story gets the intro the first time it comes up, not on every pass.
-        if mode == "NEWS" and last_mode != "NEWS" and DATA["news"] != intro_for:
-            intro_for = DATA["news"]
-            if play_intro():
-                print("News intro played")
-                now_ticks = time.ticks_ms()
+        if mode == "NEWS" and last_mode != "NEWS":
+            if DATA["news"] != intro_for:
+                intro_for = DATA["news"]
+                if play_intro():
+                    print("News intro played")
+            now_ticks = news_start = time.ticks_ms()
+            news_avail = max(0, (slot + 1) * screen_seconds - time.time()) * 1000
         last_mode = mode
 
         if mode == "TRAINS":    draw_train_dashboard(trains, now_ticks)
         elif mode == "WEATHER": draw_weather_split(DATA["weather"], now_ticks)
-        elif mode == "NEWS":    draw_news_screen(DATA["news"], now_ticks)
+        elif mode == "NEWS":    draw_news_screen(DATA["news"], time.ticks_diff(now_ticks, news_start), news_avail)
         elif mode == "ANIM":    draw_animation(now_ticks)
         elif mode == "CLOCK":   draw_clock(tm)
         else:                   screen.clear()
