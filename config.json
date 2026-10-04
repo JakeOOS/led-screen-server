@@ -4,8 +4,10 @@
   "screen_seconds": 12,
 
   "schedule": [
-    {"from": 5,  "brightness": 1.0, "screens": ["TRAINS", "WEATHER", "NEWS"]},
-    {"from": 12, "brightness": 0.5, "screens": ["TRAINS", "WEATHER", "NEWS", "ANIM"]},
+    {"from": 5,  "brightness": 1.0, "screens": ["WEATHER", "NEWS"]},
+    {"from": 6,  "brightness": 1.0, "screens": ["TRAINS", "WEATHER", "NEWS"]},
+    {"from": 11, "brightness": 1.0, "screens": ["WEATHER", "NEWS"]},
+    {"from": 12, "brightness": 0.5, "screens": ["WEATHER", "NEWS", "ANIM"]},
     {"from": 19, "brightness": 0.2, "screens": ["ANIM", "NEWS", "CLOCK"]}
   ],
 
