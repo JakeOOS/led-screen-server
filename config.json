@@ -23,5 +23,6 @@
 
   "anim_url": "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin",
 
-  "news_interests": "major UK and world events, science, technology, London"
+  "news_interests": "major UK and world events, science, technology, London",
+  "news_hours": 6
 }
