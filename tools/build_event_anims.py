@@ -722,8 +722,8 @@ BIG_SPIDER = [
 
 def halloween_spiders(f, N):
     t = f / N
-    c = Canvas((80, 40, 100), (30, 10, 40))
-    web = (150, 145, 165)
+    c = Canvas((0, 0, 0))
+    web = (120, 115, 130)
     for a in range(5):                                                # web in the corner
         ang = a / 4 * (math.pi / 2)
         for r in range(0, 20):
@@ -737,7 +737,7 @@ def halloween_spiders(f, N):
                 u = k / 7
                 sag = 1.2 * math.sin(math.pi * u)
                 c.px(x0 + (x1 - x0) * u - sag * 0.7, y0 + (y1 - y0) * u - sag * 0.7, web)
-    body = {"#": (6, 4, 8), "r": (255, 30, 20)}
+    body = {"#": (220, 20, 15), "r": (255, 230, 80)}
     # dangling spider: lowers on its thread and climbs back up
     dy = 3 + 14 * (0.5 - 0.5 * math.cos(TAU * t))
     for y in range(0, int(dy)):
@@ -757,7 +757,7 @@ def halloween_spiders(f, N):
     # the big one, slow and heavy, along the bottom
     u = t % 1.0
     x = u * (W + 40) - 20
-    c.sprite(BIG_SPIDER[(f // 3) % 2], int(x), 21, {"#": (12, 8, 14), "r": (255, 40, 20)})
+    c.sprite(BIG_SPIDER[(f // 3) % 2], int(x), 21, {"#": (170, 0, 10), "r": (255, 230, 80)})
     return c.im
 
 
@@ -773,11 +773,11 @@ EYE_BLINKS = (44, 84)
 def _veins():
     rng = random.Random(13)
     veins = []
-    for _ in range(14):
+    for _ in range(20):
         ang = rng.random() * TAU
-        x, y = 32 + 29 * math.cos(ang), 16 + 15 * math.sin(ang)
+        x, y = 32 + 40 * math.cos(ang), 16 + 22 * math.sin(ang)
         path = []
-        for _ in range(rng.randint(6, 11)):
+        for _ in range(rng.randint(8, 14)):
             path.append((x, y))
             x += (32 - x) * 0.12 + rng.uniform(-1, 1)
             y += (16 - y) * 0.12 + rng.uniform(-1, 1)
@@ -798,50 +798,47 @@ def halloween_eye(f, N):
             u = u * u * (3 - 2 * u)
             gx, gy = x0 + (x1 - x0) * u, y0 + (y1 - y0) * u
             break
-    rx, ry = 29, 14
-    for y in range(H):                                                # eyeball
+    for y in range(H):                                                # the white, edge to edge
         for x in range(W):
-            d = ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2
-            if d <= 1:
-                c.p[x, y] = lerp((245, 238, 225), (170, 120, 120), d ** 1.5)
+            d = ((x - 32) / 40) ** 2 + ((y - 16) / 22) ** 2
+            c.p[x, y] = lerp((248, 240, 228), (205, 150, 145), d)
     for path in VEINS:
         for k in range(len(path) - 1):
             (xa, ya), (xb, yb) = path[k], path[k + 1]
             for j in range(4):
                 x, y = xa + (xb - xa) * j / 4, ya + (yb - ya) * j / 4
-                if ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2 <= 1:
-                    blend_px(c, x, y, (190, 25, 35), 0.8 - k * 0.07)
-    ix, iy = 32 + gx, 16 + gy
-    dil = 1 + 0.25 * math.sin(TAU * f / N * 2)
+                blend_px(c, x, y, (190, 25, 35), 0.85 - k * 0.07)
+    ix, iy = 32 + gx * 1.6, 16 + gy * 1.6
+    dil = 1 + 0.2 * math.sin(TAU * f / N * 2)
     for y in range(H):                                                # iris and pupil
         for x in range(W):
-            if ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2 > 1:
-                continue
             r = math.hypot(x - ix, y - iy)
-            if r <= 3.2 * dil:
+            if r <= 5 * dil:
                 c.p[x, y] = (4, 2, 4)
-            elif r <= 8:
-                streak = 0.75 + 0.25 * math.sin(math.atan2(y - iy, x - ix) * 9)
-                col = lerp((150, 200, 40), (40, 90, 20), (r - 3) / 5)
+            elif r <= 12:
+                streak = 0.75 + 0.25 * math.sin(math.atan2(y - iy, x - ix) * 11)
+                col = lerp((160, 210, 40), (40, 90, 20), (r - 5) / 7)
                 c.p[x, y] = scale(col, streak)
-            elif r <= 9:
+            elif r <= 13.2:
                 c.p[x, y] = (20, 40, 10)
-    c.px(ix + 2, iy - 2, (255, 255, 255))                             # wet highlight
-    c.px(ix + 3, iy - 2, (200, 200, 200))
+    for dx, dy in ((3, -4), (4, -4), (3, -3)):                       # wet highlight
+        c.px(ix + dx, iy + dy, (255, 255, 255))
     close = 0.0                                                       # eyelids
     for b in EYE_BLINKS:
         if b <= f < b + 6:
             close = (1, 1, 1, 0.6, 0.25, 0)[f - b] if f > b else 0.6
     lid = (90, 30, 50)
-    for x in range(W):
-        half = ry * math.sqrt(max(0, 1 - ((x - 32) / rx) ** 2))
-        top = 16 - half + (2 * half) * 0.5 * close + 1.5                # resting lid covers the top a little
-        bot = 16 + half - (2 * half) * 0.5 * close
-        for y in range(H):
-            inside = ((x - 32) / (rx + 2)) ** 2 + ((y - 16) / (ry + 2)) ** 2 <= 1
-            if inside and (y < top or y > bot):
-                c.p[x, y] = lid if y < top else scale(lid, 0.8)
-        c.px(x, top, (15, 0, 8)) if half else None
+    if close:                                                         # blink: lids sweep in from top and bottom
+        for x in range(W):
+            curve = 3 * ((x - 32) / 32) ** 2
+            top = (H / 2 + 1) * close + curve * close - 1
+            bot = H - (H / 2 + 1) * close - curve * close
+            for y in range(H):
+                if y < top:
+                    c.p[x, y] = lid
+                elif y > bot:
+                    c.p[x, y] = scale(lid, 0.8)
+            c.px(x, top, (15, 0, 8))
     return c.im
 
 
