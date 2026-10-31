@@ -24,7 +24,7 @@ import json
 
 # Must match "firmware" in config.json -- the bootloader refuses to install
 # a download whose marker doesn't match the version it was told to fetch.
-FW_VERSION = "36"
+FW_VERSION = "37"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
@@ -660,6 +660,106 @@ def _validate_anim(path, written):
         return written > 0 and (written % FRAME_SIZE == 0)
     except OSError:
         return False
+
+def playlist_next(now):
+    """(url of the clip after the current one, seconds until it starts), or
+    (None, 0) when there's no playlist with more than one clip."""
+    pl = CFG.get("anim_playlist") or []
+    if len(pl) < 2:
+        return None, 0
+    mins = [max(1, int(e.get("minutes", 1))) for e in pl]
+    total = sum(mins)
+    pos = (now // 60) % total
+    for i, m in enumerate(mins):
+        if pos < m:
+            left = (m - pos) * 60 - (now % 60)
+            return pl[(i + 1) % len(pl)].get("url", ""), left
+        pos -= m
+    return None, 0
+
+# Background download of the next playlist clip, a few KB per frame, so the
+# switch is instant instead of stopping on "GETTING ANIM". Only used when
+# there's room on flash for both clips; otherwise the old way still works.
+NEXT_ANIM = "anim_next.bin"
+PF = {"url": "", "r": None, "f": None, "written": 0, "expected": None,
+      "ready": "", "failed": -9999}
+
+def _pf_abort(why):
+    print("Prefetch stopped:", why)
+    PF["failed"] = time.time()
+    try:
+        if PF["f"]: PF["f"].close()
+    except Exception: pass
+    try:
+        if PF["r"]: PF["r"].close()
+    except Exception: pass
+    PF["f"] = PF["r"] = None
+    try: os.remove(NEXT_ANIM + ".tmp")
+    except OSError: pass
+
+def prefetch_start(url):
+    PF["ready"] = ""
+    try: os.remove(NEXT_ANIM)
+    except OSError: pass
+    gc.collect()
+    try:
+        r = urequests.get(url + "?t=" + str(time.ticks_ms()), timeout=20)
+        PF["r"] = r
+        if r.status_code != 200:
+            return _pf_abort("HTTP %d" % r.status_code)
+        expected = None
+        try:
+            cl = r.headers.get("Content-Length")
+            if cl: expected = int(cl)
+        except Exception:
+            expected = None
+        fb = free_bytes()
+        if expected is None or (0 <= fb < expected + 20000):
+            return _pf_abort("no room (%d free)" % fb)
+        PF.update(url=url, expected=expected, written=0, f=open(NEXT_ANIM + ".tmp", "wb"))
+    except Exception as e:
+        _pf_abort(e)
+
+def prefetch_step(chunks=6):
+    """Pull a few chunks of the next clip; finish it off when it's all in."""
+    if not PF["f"]:
+        return
+    try:
+        for _ in range(chunks):
+            chunk = PF["r"].raw.read(512)
+            if not chunk:
+                break
+            PF["f"].write(chunk)
+            PF["written"] += len(chunk)
+        else:
+            if PF["written"] < PF["expected"]:
+                return
+        PF["f"].close(); PF["f"] = None
+        PF["r"].close(); PF["r"] = None
+        written = PF["written"]
+        if written == PF["expected"] and _validate_anim(NEXT_ANIM + ".tmp", written):
+            os.rename(NEXT_ANIM + ".tmp", NEXT_ANIM)
+            PF["ready"] = PF["url"]
+            print("Prefetched", PF["url"], written, "bytes")
+        else:
+            _pf_abort("bad size %d" % written)
+    except Exception as e:
+        _pf_abort(e)
+
+def prefetch_swap(url):
+    """Make the prefetched clip the current one. True if it was there."""
+    if PF["ready"] != url:
+        return False
+    try:
+        try: os.remove("anim.bin")
+        except OSError: pass
+        os.rename(NEXT_ANIM, "anim.bin")
+    except OSError:
+        PF["ready"] = ""
+        return False
+    PF["ready"] = ""
+    ANIM["loaded"] = False
+    return True
 
 def playlist_url(now):
     """The animation that should be on now. config.json can name an
@@ -1303,7 +1403,7 @@ def main():
                 last_wifi_try = now
                 online = connect_wifi()
 
-        if online:
+        if online and PF["f"] is None:
             # At most one data fetch per boundary: the first that's due.
             for name, interval in wanted_jobs(screens):
                 if now >= due.get(name, 0):
@@ -1329,6 +1429,11 @@ def main():
             # playlist moves on to a different clip, but only while the
             # schedule uses it.
             want_url = playlist_url(now)
+            if ("ANIM" in screens and want_url and want_url != anim_loaded_url
+                    and prefetch_swap(want_url)):
+                anim_loaded_url = want_url
+                last_anim_fetch = now
+                current_anim_frame = -1
             if "ANIM" in screens and want_url and (
                     now - last_anim_fetch > ANIM_REFRESH
                     or (want_url != anim_loaded_url and now - anim_try > 60)):
@@ -1376,6 +1481,22 @@ def main():
                             f.write(intro_url)
                     except OSError:
                         pass
+
+        # Playlist: swap to the prefetched clip the moment its turn comes, and
+        # otherwise trickle the next one in while this one plays.
+        if "ANIM" in screens and CFG.get("anim_playlist"):
+            want_url = playlist_url(now)
+            if want_url != anim_loaded_url and prefetch_swap(want_url):
+                anim_loaded_url = want_url
+                last_anim_fetch = now
+                current_anim_frame = -1
+            if PF["f"] is not None:
+                prefetch_step()
+            elif wifi_up():
+                nxt, left = playlist_next(now)
+                if (nxt and nxt != anim_loaded_url and nxt != PF["ready"]
+                        and left > 5 and now - PF["failed"] > 120):
+                    prefetch_start(nxt)
 
         # Apply brightness from the schedule when it changes.
         brightness = band.get("brightness", 0.5)
