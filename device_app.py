@@ -24,7 +24,7 @@ import json
 
 # Must match "firmware" in config.json -- the bootloader refuses to install
 # a download whose marker doesn't match the version it was told to fetch.
-FW_VERSION = "37"
+FW_VERSION = "38"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
@@ -1438,7 +1438,11 @@ def main():
                     now - last_anim_fetch > ANIM_REFRESH
                     or (want_url != anim_loaded_url and now - anim_try > 60)):
                 anim_try = now
-                draw_status(["GETTING", "ANIM"])
+                if CFG.get("anim_playlist"):
+                    screen.clear()               # party mode: just go dark while it loads
+                    i75.update()
+                else:
+                    draw_status(["GETTING", "ANIM"])
                 result = fetch_animation(want_url)
                 if result == "OK":
                     anim_loaded_url = want_url

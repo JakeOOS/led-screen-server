@@ -41,5 +41,6 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 - Also `halloween_spiders` and `halloween_eye`. Playlist = peek, spooky (graveyard + face in sky on lightning), spiders, eye. anim_url also set to halloween_peek.bin as fallback for fw 35.
 - Firmware 36: config.json `anim_playlist` [{url, minutes}] cycles clips on the wall clock (device re-downloads anim.bin when the clip changes). Falls back to `anim_url` when absent.
 - Firmware 37: prefetches the next playlist clip into anim_next.bin a few KB per frame while the current one plays, then swaps instantly (falls back to the old GETTING ANIM download if flash has no room for both).
+- Firmware 38: in playlist mode, a fallback download blanks the screen instead of showing GETTING ANIM.
 - config.json schedule temporarily set to ANIM-only for the party (1 min per clip as a test; Jack wants 15 min). To restore normal screens, revert the schedule from the commit before this one (TRAINS/WEATHER/NEWS/CLOCK bands, 19:00 brightness 0.2).
 - Earlier: news stuck 3 days because the "VOXEL screen news" scheduled task was auto-disabled 29 Oct (GitHub access lost); Jack re-enabled it.
