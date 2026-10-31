@@ -702,6 +702,149 @@ def halloween_peek(f, N):
     return c.im
 
 
+# ---------------------------------------------------------------------
+# Halloween spiders (web in the corner, spiders scuttling across, one
+# dangling on its thread)
+# ---------------------------------------------------------------------
+SPIDER = [
+    ["#.......#", ".#.###.#.", "..####rr.", ".#.###.#.", "#.......#"],
+    [".#.....#.", "#..###..#", ".#####rr.", "#..###..#", ".#.....#."],
+]
+BIG_SPIDER = [
+    ["#....#.......#....", ".#...#.......#...#", "..#..#.#####.#..#.",
+     "...##.#######.##..", "....##########rr#.", "....###########rr.",
+     "...##.#######.##..", "..#..#.#####.#..#.", ".#...#.......#...#", "#....#.......#...."],
+    ["..#....#.....#..#.", "..#....#.....#...#", "#..#..#.#####.#.#..",
+     ".#.##.#######.##...", "....##########rr#.", "....###########rr.",
+     ".#.##.#######.##...", "#..#..#.#####.#.#..", "..#....#.....#...#", "..#....#.....#..#."],
+]
+
+
+def halloween_spiders(f, N):
+    t = f / N
+    c = Canvas((80, 40, 100), (30, 10, 40))
+    web = (150, 145, 165)
+    for a in range(5):                                                # web in the corner
+        ang = a / 4 * (math.pi / 2)
+        for r in range(0, 20):
+            c.px(r * math.cos(ang), r * math.sin(ang), web)
+    for ring in (5, 10, 15):
+        for a in range(4):
+            a0, a1 = a / 4 * (math.pi / 2), (a + 1) / 4 * (math.pi / 2)
+            x0, y0 = ring * math.cos(a0), ring * math.sin(a0)
+            x1, y1 = ring * math.cos(a1), ring * math.sin(a1)
+            for k in range(8):
+                u = k / 7
+                sag = 1.2 * math.sin(math.pi * u)
+                c.px(x0 + (x1 - x0) * u - sag * 0.7, y0 + (y1 - y0) * u - sag * 0.7, web)
+    body = {"#": (6, 4, 8), "r": (255, 30, 20)}
+    # dangling spider: lowers on its thread and climbs back up
+    dy = 3 + 14 * (0.5 - 0.5 * math.cos(TAU * t))
+    for y in range(0, int(dy)):
+        c.px(50, y, web)
+    sp = SPIDER[(f // 4) % 2]
+    rot = [[sp[r][col] for r in range(len(sp))] for col in range(len(sp[0]))]   # head down
+    c.sprite(["".join(row) for row in rot], 48, int(dy), body)
+    # small spiders scuttling both ways
+    for i, (laps, y, rev) in enumerate(((2, 20, False), (3, 26, True), (2, 13, True), (3, 7, False), (4, 17, False), (2, 28, True))):
+        u = (rnd(i, 41) + laps * t) % 1.0
+        x = u * (W + 12) - 10
+        frames = SPIDER[(f // 2 + i) % 2]
+        if rev:
+            x = W - x - 9
+            frames = [r[::-1] for r in frames]
+        c.sprite(frames, int(x), y + (f // 2 + i) % 2 * 0, body)
+    # the big one, slow and heavy, along the bottom
+    u = t % 1.0
+    x = u * (W + 40) - 20
+    c.sprite(BIG_SPIDER[(f // 3) % 2], int(x), 21, {"#": (12, 8, 14), "r": (255, 40, 20)})
+    return c.im
+
+
+# ---------------------------------------------------------------------
+# Halloween eye (one big bloodshot eyeball looking around, blinking)
+# ---------------------------------------------------------------------
+EYE_GAZE = [  # (frame, dx, dy) keyframes; holds then darts
+    (0, 0, 0), (12, 0, 0), (16, -11, -1), (34, -11, -1), (37, 10, 2), (52, 10, 2),
+    (55, 4, -4), (66, 4, -4), (69, 0, 0), (100, 0, 0)]
+EYE_BLINKS = (44, 84)
+
+
+def _veins():
+    rng = random.Random(13)
+    veins = []
+    for _ in range(14):
+        ang = rng.random() * TAU
+        x, y = 32 + 29 * math.cos(ang), 16 + 15 * math.sin(ang)
+        path = []
+        for _ in range(rng.randint(6, 11)):
+            path.append((x, y))
+            x += (32 - x) * 0.12 + rng.uniform(-1, 1)
+            y += (16 - y) * 0.12 + rng.uniform(-1, 1)
+        veins.append(path)
+    return veins
+
+
+VEINS = _veins()
+
+
+def halloween_eye(f, N):
+    c = Canvas((40, 0, 8), (12, 0, 2))
+    for i in range(len(EYE_GAZE) - 1):                                # gaze
+        f0, x0, y0 = EYE_GAZE[i]
+        f1, x1, y1 = EYE_GAZE[i + 1]
+        if f0 <= f < f1:
+            u = (f - f0) / (f1 - f0)
+            u = u * u * (3 - 2 * u)
+            gx, gy = x0 + (x1 - x0) * u, y0 + (y1 - y0) * u
+            break
+    rx, ry = 29, 14
+    for y in range(H):                                                # eyeball
+        for x in range(W):
+            d = ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2
+            if d <= 1:
+                c.p[x, y] = lerp((245, 238, 225), (170, 120, 120), d ** 1.5)
+    for path in VEINS:
+        for k in range(len(path) - 1):
+            (xa, ya), (xb, yb) = path[k], path[k + 1]
+            for j in range(4):
+                x, y = xa + (xb - xa) * j / 4, ya + (yb - ya) * j / 4
+                if ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2 <= 1:
+                    blend_px(c, x, y, (190, 25, 35), 0.8 - k * 0.07)
+    ix, iy = 32 + gx, 16 + gy
+    dil = 1 + 0.25 * math.sin(TAU * f / N * 2)
+    for y in range(H):                                                # iris and pupil
+        for x in range(W):
+            if ((x - 32) / rx) ** 2 + ((y - 16) / ry) ** 2 > 1:
+                continue
+            r = math.hypot(x - ix, y - iy)
+            if r <= 3.2 * dil:
+                c.p[x, y] = (4, 2, 4)
+            elif r <= 8:
+                streak = 0.75 + 0.25 * math.sin(math.atan2(y - iy, x - ix) * 9)
+                col = lerp((150, 200, 40), (40, 90, 20), (r - 3) / 5)
+                c.p[x, y] = scale(col, streak)
+            elif r <= 9:
+                c.p[x, y] = (20, 40, 10)
+    c.px(ix + 2, iy - 2, (255, 255, 255))                             # wet highlight
+    c.px(ix + 3, iy - 2, (200, 200, 200))
+    close = 0.0                                                       # eyelids
+    for b in EYE_BLINKS:
+        if b <= f < b + 6:
+            close = (1, 1, 1, 0.6, 0.25, 0)[f - b] if f > b else 0.6
+    lid = (90, 30, 50)
+    for x in range(W):
+        half = ry * math.sqrt(max(0, 1 - ((x - 32) / rx) ** 2))
+        top = 16 - half + (2 * half) * 0.5 * close + 1.5                # resting lid covers the top a little
+        bot = 16 + half - (2 * half) * 0.5 * close
+        for y in range(H):
+            inside = ((x - 32) / (rx + 2)) ** 2 + ((y - 16) / (ry + 2)) ** 2 <= 1
+            if inside and (y < top or y > bot):
+                c.p[x, y] = lid if y < top else scale(lid, 0.8)
+        c.px(x, top, (15, 0, 8)) if half else None
+    return c.im
+
+
 ANIMS = {
     # name: (frame function, frames, palette size)
     "thanksgiving": (thanksgiving, 48, 96),
@@ -713,6 +856,8 @@ ANIMS = {
     "halloween_party": (halloween_party, 80, 128),
     "halloween_spooky": (halloween_spooky, 100, 128),
     "halloween_peek": (halloween_peek, 120, 64),
+    "halloween_spiders": (halloween_spiders, 120, 64),
+    "halloween_eye": (halloween_eye, 100, 128),
 }
 
 

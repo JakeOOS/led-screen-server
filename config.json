@@ -11,7 +11,9 @@
 
   "anim_playlist": [
     {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_peek.bin", "minutes": 1},
-    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spooky.bin", "minutes": 1}
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spooky.bin", "minutes": 1},
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spiders.bin", "minutes": 1},
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_eye.bin", "minutes": 1}
   ],
 
   "boards": [
@@ -26,7 +28,7 @@
   "lat": "51.5074",
   "lon": "-0.1278",
 
-  "anim_url": "https://raw.githubusercontent.com/JakeOOS/TidBytTulse/main/anim.bin",
+  "anim_url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_peek.bin",
 
   "news_interests": "major UK and world events, science, technology, London, LGBT news, pop culture",
   "news_hours": 6

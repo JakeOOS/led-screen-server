@@ -38,6 +38,7 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 
 ## 2026-10-31 — Halloween party mode
 - New clips in tools/build_event_anims.py: `halloween_peek` (orange/black stripes, ghosts + zombies peek out from behind the bars), `halloween_spooky` (moonlit graveyard, fog, lightning, zombies shambling across), `halloween_party` (dancing skeletons; not in use).
+- Also `halloween_spiders` and `halloween_eye`. Playlist = peek, spooky (graveyard + face in sky on lightning), spiders, eye. anim_url also set to halloween_peek.bin as fallback for fw 35.
 - Firmware 36: config.json `anim_playlist` [{url, minutes}] cycles clips on the wall clock (device re-downloads anim.bin when the clip changes). Falls back to `anim_url` when absent.
 - config.json schedule temporarily set to ANIM-only for the party (1 min per clip as a test; Jack wants 15 min). To restore normal screens, revert the schedule from the commit before this one (TRAINS/WEATHER/NEWS/CLOCK bands, 19:00 brightness 0.2).
 - Earlier: news stuck 3 days because the "VOXEL screen news" scheduled task was auto-disabled 29 Oct (GitHub access lost); Jack re-enabled it.
