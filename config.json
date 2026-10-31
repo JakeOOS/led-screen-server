@@ -11,7 +11,8 @@
 
   "anim_playlist": [
     {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_peek.bin", "minutes": 15},
-    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spooky.bin", "minutes": 15}
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spooky.bin", "minutes": 15},
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween.bin", "minutes": 15}
   ],
 
   "boards": [
