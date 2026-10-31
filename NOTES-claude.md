@@ -39,6 +39,7 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 ## 2026-10-31 — Halloween party mode
 - New clips in tools/build_event_anims.py: `halloween_peek` (orange/black stripes, ghosts + zombies peek out from behind the bars), `halloween_spooky` (moonlit graveyard, fog, lightning, zombies shambling across), `halloween_party` (dancing skeletons; not in use).
 - Also `halloween_spiders` and `halloween_eye`. Playlist = peek, spooky (graveyard + face in sky on lightning), spiders, eye. anim_url also set to halloween_peek.bin as fallback for fw 35.
+- Eye clip dropped from the playlist (Jack: didn't work); replaced by `halloween_blood` (dripping HALLOWEEN in blood).
 - Firmware 36: config.json `anim_playlist` [{url, minutes}] cycles clips on the wall clock (device re-downloads anim.bin when the clip changes). Falls back to `anim_url` when absent.
 - Firmware 37: prefetches the next playlist clip into anim_next.bin a few KB per frame while the current one plays, then swaps instantly (falls back to the old GETTING ANIM download if flash has no room for both).
 - Firmware 38: in playlist mode, a fallback download blanks the screen instead of showing GETTING ANIM.

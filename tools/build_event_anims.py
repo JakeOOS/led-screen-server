@@ -842,6 +842,59 @@ def halloween_eye(f, N):
     return c.im
 
 
+# ---------------------------------------------------------------------
+# Halloween blood (blood running down from the top and dripping off a
+# HALLOWEEN written in blood, into a pool along the bottom)
+# ---------------------------------------------------------------------
+BLOOD = (175, 0, 12)
+BLOOD_HI = (240, 40, 40)
+BLOOD_DK = (95, 0, 6)
+
+
+def _drip(c, x, y0, u, max_len, floor):
+    """One drip hanging from (x, y0): grows, lets go a drop that falls to
+    the floor, shrinks back. u runs 0..1 over one cycle."""
+    grow = min(1.0, u / 0.65)
+    length = max_len * (grow ** 1.6) if u < 0.65 else max_len * (1 - (u - 0.65) / 0.35) ** 0.5
+    for y in range(int(y0), int(y0 + length)):
+        c.px(x, y, BLOOD)
+    if length >= 1:
+        c.px(x, y0 + length, BLOOD_DK)
+        c.px(x - 1, y0 + length - 1, BLOOD) if length > 3 else None
+    if u >= 0.65:                                                   # the falling drop
+        v = (u - 0.65) / 0.35
+        dy = y0 + max_len + (floor - y0 - max_len) * v * v
+        if dy < floor:
+            c.px(x, dy, BLOOD_HI)
+            c.px(x, dy + 1, BLOOD)
+
+
+def halloween_blood(f, N):
+    t = f / N
+    c = Canvas((0, 0, 0))
+    floor = 29
+    for x in range(W):                                              # blood along the top edge
+        h = 2 + 1.2 * math.sin(x * 0.7) + 0.8 * math.sin(x * 1.9 + 1)
+        for y in range(int(h)):
+            c.px(x, y, BLOOD if y < h - 1 else BLOOD_DK)
+    for i, x in enumerate((2, 7, 13, 20, 27, 33, 41, 48, 55, 61)):  # drips from the top
+        u = (rnd(i, 51) + (1 + i % 2) * t) % 1.0
+        _drip(c, x, 2 + (i % 3 == 0), u, 4 + 5 * rnd(i, 52), floor)
+    word = "HALLOWEEN"                                              # the word, written in blood
+    x0 = (W - text_w(word, FONT_BOLD_5X5)) // 2
+    c.text(word, x0, 12, lambda x, y: BLOOD_HI if y == 12 else BLOOD, font=FONT_BOLD_5X5)
+    for i, x in enumerate((x0 + 1, x0 + 9, x0 + 16, x0 + 24, x0 + 33, x0 + 40, x0 + 49)):
+        u = (rnd(i, 53) + t * (1 + (i % 3 == 1))) % 1.0
+        _drip(c, x, 17, u, 3 + 4 * rnd(i, 54), floor)
+    for x in range(W):                                              # the pool, slowly rippling
+        top = floor - 0.6 - 0.6 * math.sin(x * 0.4 + TAU * t) - 0.4 * math.sin(x * 1.3 - TAU * 2 * t)
+        for y in range(int(round(top)), H):
+            c.px(x, y, BLOOD_DK if y > top + 1 else BLOOD)
+        if (x + f // 2) % 9 == 0:
+            c.px(x, int(round(top)), BLOOD_HI)
+    return c.im
+
+
 ANIMS = {
     # name: (frame function, frames, palette size)
     "thanksgiving": (thanksgiving, 48, 96),
@@ -855,6 +908,7 @@ ANIMS = {
     "halloween_peek": (halloween_peek, 120, 64),
     "halloween_spiders": (halloween_spiders, 120, 64),
     "halloween_eye": (halloween_eye, 100, 128),
+    "halloween_blood": (halloween_blood, 120, 32),
 }
 
 
