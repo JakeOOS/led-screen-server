@@ -362,6 +362,319 @@ def news_intro(f, N):
     return c.im
 
 
+def claude(f, N):
+    """The news intro's spark on its own: one slow full turn with a gentle
+    breath, so it loops forever without a seam."""
+    c = Canvas()
+    size = 12.5 * (1 + 0.06 * math.sin(TAU * 2 * f / N))
+    c.im = draw_spark(size, spin=360 * f / N, squash=1, stretch=1, cy=16, color=CORAL)
+    return c.im
+
+
+# ---------------------------------------------------------------------
+# Halloween party (dancing skeletons, bouncing pumpkin, disco floor)
+# ---------------------------------------------------------------------
+SKELETON = [
+    ["..www..", ".wwwww.", ".wkwkw.", ".wwwww.", "..w.w..", "w..w..w", ".w.w.w.",
+     "..www..", "...w...", "..www..", "...w...", "..w.w..", ".w...w.", ".w...w.", "ww...ww"],
+    ["..www..", ".wwwww.", ".wkwkw.", ".wwwww.", "..w.w..", "...w...", ".wwwww.",
+     "w.www.w", "w..w..w", "..www..", "...w...", "..w.w..", ".w...w.", "w.....w", "w.....w"],
+]
+PARTY_COLS = [(255, 110, 0), (120, 255, 40), (190, 60, 255), (255, 40, 120), (40, 200, 255)]
+
+
+def halloween_party(f, N):
+    beat = f // 5                                  # 120 bpm at 10 fps
+    phase = (f % 5) / 5
+    c = Canvas((26, 0, 44), (6, 0, 16))
+    for i, (ox, oy, col) in enumerate(((0.0, 0.3, (120, 0, 160)), (0.5, 0.8, (0, 90, 60)))):
+        gx = 32 + 26 * math.sin(TAU * (f / N + ox))
+        gy = 18 + 6 * math.sin(TAU * (2 * f / N + oy))
+        c.glow(gx, gy, 14, col, 0.55)
+    for x in range(0, W, 8):                       # disco floor
+        col = PARTY_COLS[(x // 8 + beat) % len(PARTY_COLS)]
+        c.rect(x, 29, 8, 3, scale(col, 0.75 - 0.35 * phase))
+        c.rect(x, 29, 1, 3, (10, 0, 20))
+    for i in range(2):                             # bats
+        t = (rnd(i, 21) + f / N) % 1.0
+        x = t * (W + 14) - 7 if i == 0 else (1 - t) * (W + 14) - 7
+        y = 9 + 3 * i + math.sin(TAU * (3 * f / N + i * 0.4))
+        c.sprite(BAT[(f // 2 + i) % 2], int(x), int(y), {"#": (5, 0, 10)})
+    bounce = round(2 * abs(math.sin(math.pi * phase)))
+    bone = (240, 240, 225)
+    for i, sx in enumerate((5, 52)):               # dancing skeletons
+        pose = SKELETON[(beat + i) % 2]
+        if i:
+            pose = [r[::-1] for r in pose]
+        c.sprite(pose, sx, 14 - bounce, {"w": bone, "k": (20, 0, 30)})
+    flick = 0.75 + 0.25 * math.sin(TAU * 5 * f / N) * math.sin(TAU * 3 * f / N + 1)
+    py = 16 - 2 * bounce
+    c.glow(31, py + 6, 12, (160, 70, 0), 0.5 * flick)
+    c.sprite(PUMPKIN, 24, py, {"o": (255, 110, 0), "d": (200, 70, 0), "g": (40, 150, 30),
+                               "E": scale((255, 230, 60), flick)})
+    word = "HALLOWEEN" if f < N // 2 else "PARTY!"
+    x0 = (W - text_w(word, FONT_BOLD_5X5)) // 2
+    cx = x0
+    for k, ch in enumerate(word):                  # wavy rainbow letters
+        y = 2 + round(1.4 * math.sin(TAU * (2 * f / N) + k * 0.7))
+        col = PARTY_COLS[(k + beat) % len(PARTY_COLS)]
+        c.text(ch, cx, y, col, font=FONT_BOLD_5X5)
+        cx += text_w(ch, FONT_BOLD_5X5) + 1
+    if f % (N // 2) in (0, 1):                     # lightning flash on the word change
+        k = 0.7 if f % (N // 2) == 0 else 0.35
+        c.im = Image.blend(c.im, Image.new("RGB", (W, H), (230, 230, 255)), k)
+    return c.im
+
+
+# ---------------------------------------------------------------------
+# Halloween spooky (moonlit graveyard, fog, eyes, lightning, rising ghost)
+# ---------------------------------------------------------------------
+DEAD_TREE = [
+    "#.....#.....",
+    ".#...#...#..",
+    "..#.#...#...",
+    "...##..#..#.",
+    "....#.#..#..",
+    "....##..#...",
+    ".....###....",
+    ".....##.....",
+    ".....##.....",
+    ".....##.....",
+    ".....##.....",
+    ".....##.....",
+    "....###.....",
+    "....####....",
+]
+REAPER = [
+    "...###...",
+    "..#####..",
+    ".##...##.",
+    ".#.r.r.#.",
+    ".##...##.",
+    "#########",
+    "#########",
+    "#########",
+    "#########",
+    "#########",
+    "#########",
+    ".#######.",
+    ".#.#.#.#.",
+]
+WISP = [
+    "..www..",
+    ".wwwww.",
+    "wkkwkkw",
+    "wkkwkkw",
+    "wwwwwww",
+    "wwwkwww",
+    "wwkkkww",
+    "wwwkwww",
+    ".wwwww.",
+    ".wwww..",
+    "..www..",
+    "..ww...",
+    "...w...",
+]
+
+
+WALKER = [
+    ["..###...", ".#####..", ".#E##E..", ".#####..", "..#m#...", "..ss....", ".sssaaaa",
+     ".sssaaaa", ".sss....", ".sss....", ".ppp....", ".p.p....", "p...p...", "p...p..."],
+    ["..###...", ".#####..", ".#E##E..", ".#####..", "..#m#...", "..ss....", ".sssaaaa",
+     ".sssaaaa", ".sss....", ".sss....", ".ppp....", "..pp....", "..p.p...", ".p..p..."],
+]
+WALKER_COLS = [
+    {"#": (90, 140, 70), "E": (255, 60, 40), "m": (40, 20, 20), "s": (60, 50, 80),
+     "a": (90, 140, 70), "p": (50, 40, 35)},
+    {"#": (110, 130, 90), "E": (230, 230, 120), "m": (40, 20, 20), "s": (90, 40, 40),
+     "a": (110, 130, 90), "p": (35, 35, 55)},
+    {"#": (80, 120, 90), "E": (255, 60, 40), "m": (40, 20, 20), "s": (50, 70, 60),
+     "a": (80, 120, 90), "p": (45, 35, 30)},
+]
+
+
+def blend_px(c, x, y, col, a):
+    x, y = int(round(x)), int(round(y))
+    if 0 <= x < W and 0 <= y < H and a > 0:
+        o = c.p[x, y]
+        c.p[x, y] = tuple(int(o[i] + (col[i] - o[i]) * min(1, a)) for i in range(3))
+
+
+def halloween_spooky(f, N):
+    t = f / N
+    flash = {58: 1.0, 59: 0.3, 60: 0.0, 61: 0.9, 62: 0.45, 63: 0.15}.get(f, 0.0)
+    c = Canvas(lerp((6, 8, 22), (170, 175, 220), flash), lerp((2, 2, 6), (90, 90, 130), flash))
+    for i in range(12):                                               # faint stars
+        tw = 0.5 + 0.5 * math.sin(TAU * (t * (1 + i % 3) + rnd(i, 31)))
+        c.px(rnd(i, 32) * W, rnd(i, 33) * 14, scale((150, 150, 190), 0.15 + 0.35 * tw))
+    c.glow(46, 7, 13, (60, 70, 70), 0.6)                              # pale moon
+    c.disc(46, 7, 5, (200, 210, 190))
+    for dx, dy in ((-2, -1), (1, 2), (2, -2)):
+        c.px(46 + dx, 7 + dy, (160, 170, 150))
+    for k in range(2):                                                # clouds drift over it
+        cx = (t + k * 0.5) % 1.0 * (W + 40) - 20
+        for j in range(-9, 10):
+            for r in range(3):
+                a = 0.7 * (1 - abs(j) / 10) * (1 - r / 3)
+                blend_px(c, cx + j, 5 + 3 * k + r, (14, 16, 30), a)
+    if flash > 0.3:                                                   # the bolt
+        x = 18
+        for y in range(0, 12):
+            x += (-1, 1, 0, 1, -1, 1)[y % 6]
+            c.px(x, y, (255, 255, 255))
+            c.px(x + 1, y, (200, 200, 255))
+    c.sprite(DEAD_TREE, 0, 12, {"#": (4, 3, 6)})                   # dead tree
+    c.rect(0, 26, W, 6, (10, 14, 10))                                 # ground
+    for gx, gy, h in ((14, 20, 7), (25, 22, 5), (48, 21, 6), (58, 23, 4)):  # graves
+        c.rect(gx, gy, 5, h, (48, 48, 58))
+        c.rect(gx + 1, gy - 1, 3, 1, (48, 48, 58))
+        c.rect(gx + 2, gy + 1, 1, 3, (30, 30, 38))
+        c.rect(gx + 1, gy + 2, 3, 1, (30, 30, 38))
+    for x in range(0, W, 3):                                          # iron fence
+        c.rect(x, 24, 1, 4, (16, 16, 20))
+        c.px(x, 23, (22, 22, 28))
+    c.rect(0, 25, W, 1, (16, 16, 20))
+    # zombies shambling across in front of the graves
+    for i, (start, laps, ty) in enumerate(((0.0, 1, 13), (0.45, 1, 14), (0.7, 2, 12))):
+        u = (start + laps * t) % 1.0
+        x = u * (W + 24) - 12
+        step = (f // 3 + i) % 2
+        lurch = (f // 3 + i) % 2
+        c.sprite(WALKER[step], int(x), ty + lurch, WALKER_COLS[i])
+    # fog: two layers of slow sine noise along the ground
+    for x in range(W):
+        for layer, (base, amp, speed, alpha) in enumerate(((27, 2.5, 1, 0.45), (24, 2.0, -1, 0.25))):
+            top = base + amp * math.sin(TAU * (x / 23 + speed * t)) + 1.2 * math.sin(TAU * (x / 9 - 2 * speed * t))
+            for y in range(int(top), H):
+                d = min(1, (y - top) / 3)
+                blend_px(c, x, y, (70, 80, 95), alpha * d)
+    if flash:                                                         # lightning
+        c.im = Image.blend(c.im, Image.new("RGB", (W, H), (210, 215, 255)), 0.12 * flash)
+    return c.im
+
+
+# ---------------------------------------------------------------------
+# Halloween peek (orange/black stripes, ghosts and zombies peek out from
+# behind the black bars one at a time)
+# ---------------------------------------------------------------------
+PEEK_ORANGE = (230, 95, 15)
+PEEK_BLACK = (14, 8, 6)
+PEEK_BAR = 6                     # stripe width: orange 0-5, black 6-11, ...
+
+
+def ghost_sprite(f, blink):
+    """11x22 sheet ghost in the style of the reference: tall, plain, two oval eyes."""
+    w, h = 11, 22
+    im = {}
+    for y in range(h):
+        for x in range(w):
+            if y < 6:                                   # rounded head
+                if (x - 5) ** 2 + (y - 5.5) ** 2 * 1.1 > 30:
+                    continue
+            elif y >= h - 2:                            # wavy hem
+                if y == h - 1 and (x + f // 3) % 3 == 0:
+                    continue
+            shade = (240, 232, 210) if x > 1 else (205, 198, 180)
+            im[(x, y)] = shade
+    for ex in (3, 6):
+        rows = (7,) if blink else (6, 7, 8)
+        for ey in rows:
+            im[(ex, ey)] = (10, 6, 6)
+            im[(ex + 1, ey)] = (10, 6, 6)
+    return im, w, h
+
+
+def zombie_sprite(f, blink):
+    """14x20 zombie, facing right, arm reaching out in front."""
+    w, h = 14, 20
+    im = {}
+    skin, dark = (120, 170, 80), (70, 110, 50)
+    for y in range(0, 9):                               # head
+        for x in range(0, 9):
+            if (x, y) in ((0, 0), (8, 0)):
+                continue
+            im[(x, y)] = skin if x > 0 else dark
+    for x in range(0, 9):                               # scruffy hair
+        im[(x, 0)] = (40, 30, 20)
+        if x % 3 != 1:
+            im[(x, 1)] = (40, 30, 20)
+    if blink:
+        for x in (5, 6, 7):
+            im[(x, 4)] = (20, 10, 10)
+    else:
+        for (x, y) in ((5, 3), (6, 3), (5, 4), (6, 4)):
+            im[(x, y)] = (240, 240, 210)               # big eye
+        im[(6, 4)] = (200, 20, 20)
+        im[(2, 4)] = (240, 240, 210)                   # small eye
+        im[(3, 4)] = (20, 10, 10)
+    for x in range(3, 9):                               # stitched mouth
+        im[(x, 7)] = (60, 20, 20)
+    for x in (4, 6, 8):
+        im[(x, 6)] = (60, 20, 20)
+    for y in range(9, 11):                              # neck
+        for x in (3, 4, 5):
+            im[(x, y)] = dark
+    for y in range(11, h):                              # torn shirt
+        for x in range(0, 9):
+            if y == h - 1 and x % 3 == 0:
+                continue
+            im[(x, y)] = (60, 80, 110) if (x + y) % 5 else (40, 55, 80)
+    reach = round(math.sin(TAU * f / 10))               # arm reaching, wobbling
+    for x in range(6, w):
+        im[(x, 12 + (reach if x > 10 else 0))] = skin
+        im[(x, 13 + (reach if x > 10 else 0))] = dark
+    for (dx, dy) in ((13, 11), (13, 14)):               # fingers
+        im[(dx, dy + reach)] = skin
+    return im, w, h
+
+
+def draw_peek(c, sprite, w, h, edge, shown, top, side):
+    """Draw a sprite poking out of a black bar. side=-1: it emerges to the left
+    of the bar's left edge; side=+1: to the right of the bar's right edge, and
+    the sprite is mirrored to face the way it comes out."""
+    for (x, y), col in sprite.items():
+        if side > 0:
+            sx = edge - w + shown + x                  # facing right
+            if sx >= edge:
+                c.px(sx, top + y, col)
+        else:
+            sx = edge - shown + (w - 1 - x)            # mirrored, facing left
+            if sx < edge:
+                c.px(sx, top + y, col)
+
+
+PEEKS = [
+    # (kind, bar edge x, side, peek px, top y)
+    ("ghost", 42, -1, 9, 7),
+    ("zombie", 24, 1, 11, 9),
+    ("ghost", 54, -1, 8, 4),
+    ("zombie", 30, -1, 12, 11),
+]
+
+
+def halloween_peek(f, N):
+    c = Canvas()
+    for x in range(W):
+        col = PEEK_ORANGE if (x // PEEK_BAR) % 2 == 0 else PEEK_BLACK
+        for y in range(H):
+            c.p[x, y] = col
+    slot = N // len(PEEKS)
+    i, local = divmod(f, slot)
+    kind, edge, side, peek, top = PEEKS[i]
+    out_t, back_t = 9, slot - 8
+    if local < out_t:
+        shown = peek * ease_out_back(local / out_t)
+    elif local < back_t:
+        shown = peek
+    else:
+        shown = peek * (1 - (local - back_t) / (slot - back_t)) ** 2
+    blink = local in (out_t + 8, out_t + 9)
+    bob = round(math.sin(TAU * local / slot * 2)) if kind == "ghost" else 0
+    sprite, w, h = (ghost_sprite if kind == "ghost" else zombie_sprite)(f, blink)
+    draw_peek(c, sprite, w, h, edge, max(0, round(shown)), top + bob, side)
+    return c.im
+
+
 ANIMS = {
     # name: (frame function, frames, palette size)
     "thanksgiving": (thanksgiving, 48, 96),
@@ -369,6 +682,10 @@ ANIMS = {
     "christmas": (christmas, 60, 128),
     "oh_mary": (oh_mary, 36, 128),
     "news_intro": (news_intro, 22, 64),
+    "claude": (claude, 60, 64),
+    "halloween_party": (halloween_party, 80, 128),
+    "halloween_spooky": (halloween_spooky, 100, 128),
+    "halloween_peek": (halloween_peek, 120, 64),
 }
 
 

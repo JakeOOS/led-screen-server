@@ -1,15 +1,17 @@
 {
-  "firmware": "35",
+  "firmware": "36",
 
   "screen_seconds": 12,
 
   "schedule": [
-    {"from": 5,  "brightness": 1.0, "screens": ["WEATHER", "NEWS"]},
-    {"from": 6,  "brightness": 1.0, "screens": ["TRAINS", "WEATHER", "NEWS", "CLOCK"]},
-    {"from": 11, "brightness": 1.0, "screens": ["WEATHER", "NEWS", "CLOCK"]},
-    {"from": 12, "brightness": 0.5, "screens": ["WEATHER", "NEWS", "CLOCK"]},
-    {"from": 18, "brightness": 0.5, "screens": ["WEATHER", "NEWS"]},
-    {"from": 19, "brightness": 0.2, "screens": ["NEWS"]}
+    {"from": 5,  "brightness": 1.0, "screens": ["ANIM"]},
+    {"from": 12, "brightness": 0.5, "screens": ["ANIM"]},
+    {"from": 19, "brightness": 0.5, "screens": ["ANIM"]}
+  ],
+
+  "anim_playlist": [
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_peek.bin", "minutes": 1},
+    {"url": "https://raw.githubusercontent.com/JakeOOS/led-screen-server/main/anims/halloween_spooky.bin", "minutes": 1}
   ],
 
   "boards": [

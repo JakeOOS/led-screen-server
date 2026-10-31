@@ -24,7 +24,7 @@ import json
 
 # Must match "firmware" in config.json -- the bootloader refuses to install
 # a download whose marker doesn't match the version it was told to fetch.
-FW_VERSION = "35"
+FW_VERSION = "36"
 
 # --- CONFIG ---
 # Secrets live in device_config.py, which is gitignored and flashed to the
@@ -661,6 +661,22 @@ def _validate_anim(path, written):
     except OSError:
         return False
 
+def playlist_url(now):
+    """The animation that should be on now. config.json can name an
+    "anim_playlist": [{"url": ..., "minutes": n}, ...] which plays each clip
+    for its minutes in turn, on the wall clock; otherwise it's anim_url."""
+    pl = CFG.get("anim_playlist") or []
+    total = 0
+    for e in pl:
+        total += max(1, int(e.get("minutes", 1)))
+    if total:
+        pos = int(now // 60) % total
+        for e in pl:
+            pos -= max(1, int(e.get("minutes", 1)))
+            if pos < 0:
+                return e.get("url", "")
+    return CFG.get("anim_url", "")
+
 def load_anim_meta():
     """Read anim.bin's header (and palette, if indexed) into ANIM."""
     ANIM["loaded"] = False
@@ -1250,6 +1266,8 @@ def main():
     boot_ticks = time.ticks_ms()
     fw_armed = False
     last_anim_fetch = -9999
+    anim_loaded_url = ""  # which url anim.bin came from
+    anim_try = -9999
     last_wifi_try = -9999
     last_brightness = -1
     last_mode = ""
@@ -1307,14 +1325,22 @@ def main():
                 time.sleep(1)
                 machine.reset()
 
-            # Refresh the animation hourly, but only while the schedule uses it.
-            if "ANIM" in screens and (now - last_anim_fetch > ANIM_REFRESH):
+            # Refresh the animation hourly, and straight away when the
+            # playlist moves on to a different clip, but only while the
+            # schedule uses it.
+            want_url = playlist_url(now)
+            if "ANIM" in screens and want_url and (
+                    now - last_anim_fetch > ANIM_REFRESH
+                    or (want_url != anim_loaded_url and now - anim_try > 60)):
+                anim_try = now
                 draw_status(["GETTING", "ANIM"])
-                result = fetch_animation(CFG.get("anim_url", ""))
-                if result != "OK":
+                result = fetch_animation(want_url)
+                if result == "OK":
+                    anim_loaded_url = want_url
+                    last_anim_fetch = now
+                else:
                     draw_status(["ANIM FAIL", result], COL_RED)
                     time.sleep(2)
-                last_anim_fetch = now
                 current_anim_frame = -1
 
             # Weather clip: refetch when today's forecast condition changes.
