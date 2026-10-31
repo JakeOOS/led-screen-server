@@ -517,8 +517,35 @@ def halloween_spooky(f, N):
             for r in range(3):
                 a = 0.7 * (1 - abs(j) / 10) * (1 - r / 3)
                 blend_px(c, cx + j, 5 + 3 * k + r, (14, 16, 30), a)
+    if flash > 0.3:                                                   # face in the sky
+        k = min(1.0, flash)
+        shade = lerp((170, 175, 220), (25, 20, 45), 0.8 * k)
+        for y in range(1, 17):                                        # face looming in the cloud
+            for x in range(12, 41):
+                d = ((x - 26) / 14) ** 2 + ((y - 9) / 9) ** 2
+                if d <= 1.0:
+                    blend_px(c, x, y, shade, 0.25 * k * (1 - d))
+        for i in range(5):                                            # angry brows
+            blend_px(c, 16 + i, 3 + i // 2, (10, 5, 15), 0.9 * k)
+            blend_px(c, 36 - i, 3 + i // 2, (10, 5, 15), 0.9 * k)
+        for ex in (20, 32):                                           # hollow eyes, staring
+            for y in range(5, 10):
+                for x in range(ex - 3, ex + 3):
+                    if ((x - ex + 0.5) / 3) ** 2 + ((y - 7) / 2.5) ** 2 <= 1:
+                        blend_px(c, x, y, (10, 5, 15), 0.9 * k)
+            c.px(ex - 1, 7, (255, 30, 20))                             # red pupils
+            c.px(ex, 7, (255, 30, 20))
+        for y in (10, 11):                                            # nose
+            blend_px(c, 26, y, (20, 15, 30), 0.8 * k)
+        for x in range(19, 34):                                       # jagged grin
+            y = 14 - (1 if x in (19, 33) else 0)
+            blend_px(c, x, y, (10, 5, 15), 0.9 * k)
+            if x % 2 == 0 and 19 < x < 33:
+                blend_px(c, x, y - 1, (10, 5, 15), 0.9 * k)
+            if x % 2 == 1 and 19 < x < 33:
+                blend_px(c, x, y + 1, (10, 5, 15), 0.9 * k)
     if flash > 0.3:                                                   # the bolt
-        x = 18
+        x = 57
         for y in range(0, 12):
             x += (-1, 1, 0, 1, -1, 1)[y % 6]
             c.px(x, y, (255, 255, 255))
