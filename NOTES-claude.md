@@ -46,3 +46,4 @@ Running log for Claude Code sessions. Newest entry at the bottom.
 - Firmware 38: in playlist mode, a fallback download blanks the screen instead of showing GETTING ANIM.
 - config.json schedule temporarily set to ANIM-only for the party (1 min per clip as a test; Jack wants 15 min). To restore normal screens, revert the schedule from the commit before this one (TRAINS/WEATHER/NEWS/CLOCK bands, 19:00 brightness 0.2).
 - Earlier: news stuck 3 days because the "VOXEL screen news" scheduled task was auto-disabled 29 Oct (GitHub access lost); Jack re-enabled it.
+- 2026-11-01: party over — config.json schedule/anim_url restored to the pre-Halloween version (TRAINS/WEATHER/NEWS/CLOCK, no anim_playlist). Firmware stays 38 (playlist support is dormant without anim_playlist). Halloween clips remain in anims/ for next year.
